@@ -1,0 +1,11 @@
+{
+  "name": "Gestão de Fiscalizações",
+  "description": "Sistema móvel para gestão de operadores económicos e fiscalizações em campo, com suporte offline.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
