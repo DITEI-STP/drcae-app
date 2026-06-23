@@ -247,8 +247,9 @@ class EncryptedTable {
   }
 
   filter(fn: (x: any) => boolean) {
-    // Para simplificar o filter no app, desencriptamos antes de passar à callback
-    // (Aviso: isto descriptografa em memória durante a busca)
+    // Nota: fn é aplicado a registos RAW (não desencriptados).
+    // Usar apenas com campos não-encriptados (ex: synced, id).
+    // A desencriptação ocorre em toArray() da EncryptedCollection retornada.
     const decryptFn = async (r: any) => {
       const key = getActiveKey();
       return key ? this.decrypt(r, key) : r;
