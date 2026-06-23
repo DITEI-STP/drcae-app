@@ -895,6 +895,7 @@ export default function App() {
   const [devicePending, setDevicePending] = useState(false);
   // null = a verificar; true = sessão válida; false = sem sessão webview
   const [webviewReady, setWebviewReady] = useState<boolean | null>(null);
+  const [authToast, setAuthToast] = useState<string | null>(null);
 
   // Handshake webview e restauração de sessão
   useEffect(() => {

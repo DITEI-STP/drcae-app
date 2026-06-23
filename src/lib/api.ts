@@ -115,6 +115,7 @@ export async function refreshSilent(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
