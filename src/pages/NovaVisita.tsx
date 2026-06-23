@@ -1,19 +1,205 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { db, generateId, Visita, Infracao, Anexo } from '../db/db';
+import { useGeoLocation, isWebviewMode } from '../lib/geo';
+import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, MapPin, Camera, Image as ImageIcon, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MapPin, Camera, Image as ImageIcon, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
+import CameraCapture from '../components/CameraCapture';
+
+const getCachedRamos = (): string[] => {
+  try {
+    const cached = localStorage.getItem('drcae_branches');
+    if (cached) {
+      const parsed = JSON.parse(cached) as { name: string }[];
+      if (parsed.length > 0) {
+        return parsed.map(b => b.name);
+      }
+    }
+  } catch (e) {
+    console.error('[drcae] Falha ao ler ramos de atividade do cache:', e);
+  }
+  return ['Restauração', 'Comércio Misto', 'Alojamento', 'Prestação de Serviço', 'Indústria', 'Outro'];
+};
+
+const RAMOS = getCachedRamos();
 
 export default function NovaVisita() {
   const navigate = useNavigate();
   const locationState = useLocation().state as { firmaId?: string } | null;
   const firmas = useLiveQuery(() => db.firmas.toArray());
 
-  const isEquipeDefinida = localStorage.getItem('drcae_equipe_definida') === 'true';
+  const [equipeNaoDefinida] = useState(() => localStorage.getItem('drcae_equipe_definida') !== 'true');
 
-  if (!isEquipeDefinida) {
+  const [step, setStep] = useState(1);
+  const [firmaId, setFirmaId] = useState(locationState?.firmaId || '');
+  const [representante, setRepresentante] = useState('');
+  const [atividadeEconomica, setAtividadeEconomica] = useState('');
+  const [visibleFirmsCount, setVisibleFirmsCount] = useState(15);
+  
+  const [showAddAtividade, setShowAddAtividade] = useState(false);
+  const [newAtivRamo, setNewAtivRamo] = useState('');
+  const [newAtivAtividade, setNewAtivAtividade] = useState('');
+  const [newAtivLocal, setNewAtivLocal] = useState('');
+  const [isSavingAtividade, setIsSavingAtividade] = useState(false);
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [time, setTime] = useState(format(new Date(), 'HH:mm'));
+  const [technicians, setTechnicians] = useState<string[]>(() => {
+    const saved = localStorage.getItem('drcae_equipe');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [newTechName, setNewTechName] = useState('');
+  const { location, refresh: refreshGeo } = useGeoLocation();
+
+  const [infracoes, setInfracoes] = useState<{type: string, severity: string, minimum_penalty?: string, maximum_penalty?: string}[]>([]);
+  const [selectedInfraction, setSelectedInfraction] = useState<{type: string, severity: string, legalInstrument?: string, details?: string} | null>(null);
+
+  const [recomendacoes, setRecomendacoes] = useState<string[]>([]);
+  const [recomendacoesHistoricas, setRecomendacoesHistoricas] = useState<RecomendacaoHistorica[]>([]);
+  const [historicoVisitas, setHistoricoVisitas] = useState<{id: string, date: string, technicians: string[], recomendacoes: string[]}[]>([]);
+  const [customRecommendation, setCustomRecommendation] = useState('');
+  const [searchInfracao, setSearchInfracao] = useState('');
+  const [showCamera, setShowCamera] = useState(false);
+
+  // Produtos de Cesta Básica
+  const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, grossPrice: number | null, retailPrice: number | null}[]>([]);
+  const [supplyStatus, setSupplyStatus] = useState<'idle'|'loading'|'active'|'none'>('idle');
+  const [produtosPrices, setProdutosPrices] = useState<Record<number, {gross: string, retail: string}>>({});
+
+  const [notes, setNotes] = useState('');
+  const [anexos, setAnexos] = useState<{file: File, url: string}[]>([]);
+  const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const [search, setSearch] = useState('');
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setVisibleFirmsCount(15);
+  };
+
+  const handleFirmsScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollHeight - target.scrollTop <= target.clientHeight + 60) {
+      const filteredFirmsCount = (firmas || []).filter(f => 
+        (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
+        (f.nif || '').includes(search)
+      ).length;
+      if (visibleFirmsCount < filteredFirmsCount) {
+        setVisibleFirmsCount(prev => prev + 15);
+      }
+    }
+  };
+
+  // Reset selected activity and representative when operator selection changes
+  useEffect(() => {
+    setAtividadeEconomica('');
+    setRepresentante('');
+    setShowAddAtividade(false);
+  }, [firmaId]);
+
+  useEffect(() => {
+    if (firmaId && firmas) {
+      const f = firmas.find(x => x.id === firmaId);
+      if (f) {
+        if (f.representant) setRepresentante(prev => prev || f.representant);
+        if (f.atividades && f.atividades.length > 0) {
+          setAtividadeEconomica(prev => prev || f.atividades[0].atividade);
+        }
+      }
+    }
+  }, [firmaId, firmas]);
+
+  const handleSaveNewAtividade = async () => {
+    if (!newAtivRamo || !newAtivAtividade.trim() || !newAtivLocal.trim()) return;
+    const currentFirma = firmas?.find(x => x.id === firmaId);
+    if (!currentFirma) return;
+
+    const newAtiv: AtividadeEconomica = {
+      ramo: newAtivRamo,
+      atividade: newAtivAtividade.trim(),
+      local: newAtivLocal.trim(),
+      geolocation: location || null
+    };
+
+    const updatedAtividades = [...(currentFirma.atividades || []), newAtiv];
+    const updatedFirma = {
+      ...currentFirma,
+      atividades: updatedAtividades,
+      synced: false
+    };
+
+    setIsSavingAtividade(true);
+    try {
+      await db.firmas.put(updatedFirma);
+      await db.syncQueue.add({
+        entity: 'firma',
+        action: 'update',
+        entityId: currentFirma.id!,
+        payload: updatedFirma,
+        timestamp: Date.now()
+      });
+
+      // Automatically select the new activity
+      setAtividadeEconomica(newAtiv.atividade);
+
+      // Reset form states
+      setNewAtivRamo('');
+      setNewAtivAtividade('');
+      setNewAtivLocal('');
+      setShowAddAtividade(false);
+    } catch (err) {
+      console.error('[drcae] Erro ao guardar nova atividade:', err);
+    } finally {
+      setIsSavingAtividade(false);
+    }
+  };
+
+  // Carregar produtos de cesta básica quando firma é selecionada
+  useEffect(() => {
+    if (!firmaId || !firmas) { setSupplyProducts([]); setSupplyStatus('none'); return; }
+    const firma = firmas.find(f => f.id === firmaId);
+    if (!firma || !navigator.onLine) { setSupplyStatus('none'); return; }
+    setSupplyStatus('loading');
+    import('../lib/api').then(api => {
+      api.getOperatorSupply(firma.id!).then(res => {
+        if (res.bookStatus === 'active' && res.products.length > 0) {
+          setSupplyProducts(res.products);
+          setSupplyStatus('active');
+        } else {
+          setSupplyStatus('none');
+        }
+      }).catch(() => setSupplyStatus('none'));
+    });
+  }, [firmaId, firmas]);
+
+  // Carregar recomendações históricas quando firma é selecionada
+  useEffect(() => {
+    if (!firmaId) { setHistoricoVisitas([]); return; }
+    (async () => {
+      const prev = await db.visitas.where('firmaId').equals(firmaId).toArray();
+      const withRecs = prev.filter(v => v.recomendacoes && v.recomendacoes.length > 0);
+      setHistoricoVisitas(withRecs.map(v => ({
+        id: v.id!,
+        date: v.date,
+        technicians: v.technicians,
+        recomendacoes: v.recomendacoes || [],
+      })));
+    })();
+  }, [firmaId]);
+
+  if (equipeNaoDefinida) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen font-sans">
          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-8 space-y-6 text-center">
@@ -43,64 +229,9 @@ export default function NovaVisita() {
       </div>
     );
   }
-  
-  const [step, setStep] = useState(1);
-  const [firmaId, setFirmaId] = useState(locationState?.firmaId || '');
-  const [representante, setRepresentante] = useState('');
-  const [atividadeEconomica, setAtividadeEconomica] = useState('');
-  
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [time, setTime] = useState(format(new Date(), 'HH:mm'));
-  const [technicians, setTechnicians] = useState<string[]>(() => {
-    const saved = localStorage.getItem('drcae_equipe');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return ['Agente Carvalho', 'Agente Silva'];
-      }
-    }
-    return ['Agente Carvalho', 'Agente Silva'];
-  });
-  const [newTechName, setNewTechName] = useState('');
-  const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
 
-  const [infracoes, setInfracoes] = useState<{type: string, severity: string}[]>([]);
-  
-  const [recomendacoes, setRecomendacoes] = useState<string[]>([]);
-  const [customRecommendation, setCustomRecommendation] = useState('');
-  const [searchInfracao, setSearchInfracao] = useState('');
-  
-  const [notes, setNotes] = useState('');
-  const [anexos, setAnexos] = useState<{file: File, url: string}[]>([]);
-  const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        err => console.error(err),
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (firmaId && firmas) {
-      const f = firmas.find(x => x.id === firmaId);
-      if (f && f.representant) setRepresentante(f.representant);
-      if (f && f.atividades && f.atividades.length > 0) {
-        setAtividadeEconomica(f.atividades[0].atividade);
-      }
-    }
-  }, [firmaId, firmas]);
-
-  const handleNext = () => setStep(s => Math.min(6, s + 1));
+  const TOTAL_STEPS = 7;
+  const handleNext = () => setStep(s => Math.min(TOTAL_STEPS, s + 1));
   const handlePrev = () => setStep(s => Math.max(1, s - 1));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,6 +310,18 @@ export default function NovaVisita() {
       geolocation: location,
       synced: false,
       recomendacoes: recomendacoes,
+      recomendacoesHistoricas: recomendacoesHistoricas.filter(r => r.atendida !== undefined),
+      produtos: supplyProducts
+        .filter(p => produtosPrices[p.id]?.gross || produtosPrices[p.id]?.retail)
+        .map(p => ({
+          product_id: p.id,
+          name: p.name,
+          grossPrice: p.grossPrice,
+          retailPrice: p.retailPrice,
+          gross: produtosPrices[p.id]?.gross || '',
+          retail: produtosPrices[p.id]?.retail || '',
+          visitaId,
+        })).filter(Boolean) as any[] || undefined,
       createdAt: Date.now(),
       locationAutoCaptured: autoCaptured
     };
@@ -188,6 +331,8 @@ export default function NovaVisita() {
       visitaId,
       type: i.type,
       severity: i.severity,
+      minimum_penalty: i.minimum_penalty ? parseFloat(i.minimum_penalty) : null,
+      maximum_penalty: i.maximum_penalty ? parseFloat(i.maximum_penalty) : null,
       synced: false
     }));
 
@@ -227,44 +372,70 @@ export default function NovaVisita() {
     navigate(`/visitas/${visitaId}`, { replace: true });
   };
 
-  const predefinedInfracoes = [
-    { 
+  const FALLBACK_INFRACOES = [
+    {
       type: 'Decomposição / Falta de Higiene Alimentar',
       legalInstrument: 'Decreto-Lei nº 41/2014, Artigo 8º',
       details: 'Falta de higienização ou desinfestação regular das superfícies, equipamentos e utensílios de preparação alimentar.',
       severity: 'Crítica'
     },
-    { 
+    {
       type: 'Ausência de Licença / Alvará de Exercício',
       legalInstrument: 'Lei das Atividades Económicas, Artigo 22º',
       details: 'Exercício de atividade comercial ou industrial sem a competente licença municipal ou alvará de funcionamento.',
       severity: 'Alta'
     },
-    { 
+    {
       type: 'Falta de Afixação de Preços para utentes',
       legalInstrument: 'Decreto-Lei nº 22/2016, Artigo 5º',
       details: 'Não disponibilização ou não afixação de preços visíveis aos consumidores nos artigos expostos para venda.',
       severity: 'Baixa'
     },
-    { 
+    {
       type: 'Bens Alimentares com Prazo Expirado',
       legalInstrument: 'Regulamento da Qualidade Alimentar, Artigo 14º',
       details: 'Detetar ou manter expostos ao público produtos alimentares cujo prazo de consumo ou validade se encontra ultrapassado.',
       severity: 'Crítica'
     },
-    { 
+    {
       type: 'Obstrução de Atividade Fiscalizadora',
       legalInstrument: 'Código de Fiscalização Económica, Artigo 45º',
       details: 'Recusa no fornecimento de acesso físico às instalações ou não apresentação imediata da documentação fiscal exigível.',
       severity: 'Alta'
     },
-    { 
+    {
       type: 'Ausência de Livro de Reclamações Físico',
       legalInstrument: 'Regulamento de Proteção ao Consumidor, Artigo 3º',
       details: 'Inexistência ou indisponibilidade de livro de reclamações físico oficial homologado no estabelecimento.',
       severity: 'Baixa'
     }
   ];
+
+  // Infrações dinâmicas: vêm dos assets cacheados do backend após sync
+  const predefinedInfracoes = (() => {
+    try {
+      // Tentar primeiro a lista categorizada de infrações
+      const cached = JSON.parse(localStorage.getItem('drcae_infractions') || '[]') as {id: number, name: string, code: string}[];
+      if (cached.length > 0) {
+        return cached.map(a => ({
+          type: a.name,
+          legalInstrument: a.code || '',
+          details: '',
+          severity: 'Baixa' as const,
+        }));
+      }
+      // Fallback: tentar filtrar de todos os assets pelo parent de infrações
+      const allAssets = JSON.parse(localStorage.getItem('drcae_assets') || '[]') as {id: number, name: string, code: string, parent_id: number | null}[];
+      const infractionRoot = allAssets.find(a => a.parent_id === null && /infra/i.test(a.name));
+      if (infractionRoot) {
+        const children = allAssets.filter(a => a.parent_id === infractionRoot.id);
+        if (children.length > 0) {
+          return children.map(a => ({ type: a.name, legalInstrument: a.code || '', details: '', severity: 'Baixa' as const }));
+        }
+      }
+    } catch { /* ignore */ }
+    return FALLBACK_INFRACOES;
+  })();
 
   const predefinedRecomendacoes = [
     "Proceder com a desinfestação imediata das zonas de armazenamento e de cozinha no prazo de 48 horas.",
@@ -284,133 +455,313 @@ export default function NovaVisita() {
     });
   };
 
+  const updateInfracaoPenalty = (type: string, field: 'minimum_penalty' | 'maximum_penalty', value: string) => {
+    setInfracoes(prev => prev.map(i => i.type === type ? { ...i, [field]: value } : i));
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#F5F7FA] relative">
+    <div className="flex flex-col h-full bg-[#F5F7FA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 relative">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-slate-200 shrink-0 sticky top-0 bg-white z-10 flex items-center justify-between">
+      <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 sticky top-0 bg-white dark:bg-slate-900 z-10 flex items-center justify-between">
          <div className="flex items-center">
-            <button onClick={() => navigate(-1)} className="mr-3 text-slate-500 hover:text-slate-900">
+            <button onClick={() => navigate(-1)} className="mr-3 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors">
                <ArrowLeft className="w-5 h-5" />
             </button>
-            <h2 className="font-bold text-slate-900 tracking-tight">Nova Visita</h2>
+            <h2 className="font-bold text-slate-900 dark:text-white tracking-tight">Nova Visita</h2>
          </div>
-         <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
-            PASSO {step}/6
+         <div className="text-xs font-bold text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30 px-2 py-1 rounded-md">
+            PASSO {step}/{TOTAL_STEPS}
          </div>
       </div>
-
-      {/* Progress Bar */}
-      <div className="w-full bg-slate-200 h-1">
-         <div className="bg-blue-600 h-1 transition-all duration-300" style={{ width: `${(step/6)*100}%` }}></div>
+      <div className="w-full bg-slate-200 dark:bg-slate-800 h-1">
+         <div className="bg-blue-600 h-1 transition-all duration-300" style={{ width: `${(step/TOTAL_STEPS)*100}%` }}></div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 custom-scrollbar">
         {/* STEP 1 */}
         {step === 1 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full min-h-[400px]">
-             <div className="space-y-3 shrink-0">
-               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                 Operador Económico / Firma
-               </label>
-               <div className="relative">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                 <input 
-                   type="text"
-                   placeholder="Procurar firma por nome..."
-                   className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium text-slate-800"
-                   value={search}
-                   onChange={e => setSearch(e.target.value)}
-                 />
-               </div>
-               
-               <div className="flex items-center justify-between mt-2">
-                 <p className="text-xs text-slate-500 font-medium">
-                   {firmas?.filter(f => f.name.toLowerCase().includes(search.toLowerCase())).length || 0} firmas
-                 </p>
-                 <button 
-                   onClick={() => navigate('/firmas/nova', { state: { returnTo: '/visitas/nova' } })}
-                   className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg"
-                 >
-                   <Plus className="w-3.5 h-3.5" />
-                   NOVA FIRMA
-                 </button>
-               </div>
-             </div>
-
-             <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar mt-2">
-                 {firmas?.filter(f => f.name.toLowerCase().includes(search.toLowerCase())).map(f => (
-                   <div 
-                     key={f.id} 
-                     onClick={() => setFirmaId(f.id!)}
-                     className={cn(
-                       "p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
-                       firmaId === f.id ? "bg-blue-50 border-blue-200 shadow-sm" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
-                     )}
-                   >
-                     <div className={cn("w-5 h-5 rounded-full border flex flex-col items-center justify-center shrink-0 mt-0.5", firmaId === f.id ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-slate-300")}>
-                        {firmaId === f.id && <Check className="w-3 h-3" />}
+          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full min-h-[400px]">
+             
+             {firmaId ? (
+                // Compact Selected Operator Card (Only shows when firmaId is selected)
+                <div className="p-4 bg-indigo-50/40 border border-indigo-200 dark:bg-indigo-950/20 dark:border-indigo-855 rounded-2xl flex items-center justify-between animate-in fade-in zoom-in-95 duration-250 shrink-0">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Operador Selecionado</p>
+                    <p className="font-extrabold text-sm text-slate-800 dark:text-slate-200 truncate mt-1">
+                      {firmas?.find(f => f.id === firmaId)?.name || 'Carregando...'}
+                    </p>
+                    <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">
+                      NIF: {firmas?.find(f => f.id === firmaId)?.nif || 'N/A'}
+                    </p>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setFirmaId('');
+                      setAtividadeEconomica('');
+                    }}
+                    className="p-1.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded-xl transition-all"
+                  >
+                    Alterar
+                  </button>
+                </div>
+             ) : (
+                // Search box and Operators list (Shown when no operator is selected)
+                <>
+                   {/* Header of Step 1 / Search section */}
+                   <div className="space-y-3 shrink-0">
+                     <label className="text-[10px] font-bold text-slate-400 dark:text-slate-550 uppercase tracking-widest flex items-center justify-between">
+                       Operador Económico / Firma
+                     </label>
+                     <div className="relative">
+                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                       <input
+                         type="text"
+                         placeholder="Procurar firma por nome ou NIF..."
+                         className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-750 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-medium text-slate-800 dark:text-slate-100 transition-all outline-none"
+                         value={search}
+                         onChange={e => handleSearchChange(e.target.value)}
+                       />
                      </div>
-                     <div>
-                       <p className={cn("font-bold text-sm leading-tight", firmaId === f.id ? "text-blue-900" : "text-slate-800")}>{f.name}</p>
-                       <p className={cn("text-[10px] uppercase font-bold tracking-widest mt-1", firmaId === f.id ? "text-blue-600" : "text-slate-400")}>NIF: {f.nif}</p>
+
+                     <div className="flex items-center justify-between mt-2">
+                       <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                         {(() => {
+                           const count = (firmas || []).filter(f => 
+                             (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                             (f.nif || '').includes(search)
+                           ).length;
+                           return `${count} ${count === 1 ? 'operador' : 'operadores'}`;
+                         })()}
+                       </p>
+                       <button
+                         type="button"
+                         onClick={() => navigate('/firmas/nova', { state: { returnTo: '/visitas/nova' } })}
+                         className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:text-blue-700 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 rounded-lg transition-colors"
+                       >
+                         <Plus className="w-3.5 h-3.5" />
+                         NOVO OPERADOR
+                       </button>
                      </div>
                    </div>
-                 ))}
-             </div>
 
-             <div className="space-y-4 shrink-0 pt-4 border-t border-slate-100">
-               <div className="space-y-2">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Representante no Local</label>
-                 <input 
-                   type="text" 
-                   value={representante}
-                   onChange={e => setRepresentante(e.target.value)}
-                   placeholder="Nome do representante..."
-                   className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium text-slate-800"
-                 />
-               </div>
-               
-               {firmaId && (
-                 <div className="space-y-2">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Atividade Económica em Vistoria</label>
-                   {(() => {
-                      const f = firmas?.find(x => x.id === firmaId);
-                      if (f && f.atividades && f.atividades.length > 0) {
-                        return (
-                          <div className="space-y-2">
-                             {f.atividades.map((ativ, i) => (
-                                <div 
-                                   key={i}
-                                   onClick={() => setAtividadeEconomica(ativ.atividade)}
-                                   className={cn("p-4 border rounded-xl cursor-pointer transition-colors relative", atividadeEconomica === ativ.atividade ? "bg-blue-50 border-blue-200 shadow-sm" : "bg-white border-slate-200 hover:bg-slate-50")}
-                                >
-                                   <div className="flex items-start gap-3">
-                                      <div className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5", atividadeEconomica === ativ.atividade ? "bg-blue-600 border-blue-600" : "bg-white border-slate-300")}>
-                                         {atividadeEconomica === ativ.atividade && <div className="w-2 h-2 bg-white rounded-full" />}
-                                      </div>
-                                      <div>
-                                         <p className={cn("font-bold text-sm", atividadeEconomica === ativ.atividade ? "text-blue-900" : "text-slate-800")}>{ativ.atividade}</p>
-                                         <p className="text-xs text-slate-500 mt-1">{ativ.ramo} • {ativ.local}</p>
-                                      </div>
-                                   </div>
-                                </div>
+                   {/* Operator List Container with Scroll Pagination */}
+                   <div 
+                     onScroll={handleFirmsScroll}
+                     className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar mt-2 border border-slate-100 dark:border-slate-800 rounded-xl p-2 bg-slate-50/50 dark:bg-slate-950/30"
+                   >
+                       {(() => {
+                         const filtered = (firmas || []).filter(f => 
+                           (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                           (f.nif || '').includes(search)
+                         );
+                         
+                         if (filtered.length === 0) {
+                           return (
+                             <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 font-medium space-y-2">
+                               <p>Nenhum operador económico encontrado.</p>
+                               {search && (
+                                 <button 
+                                   type="button"
+                                   onClick={() => {
+                                     setSearch('');
+                                     setVisibleFirmsCount(15);
+                                   }}
+                                   className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                                 >
+                                   Limpar pesquisa
+                                 </button>
+                               )}
+                             </div>
+                           );
+                         }
+
+                         return (
+                           <>
+                             {filtered.slice(0, visibleFirmsCount).map(f => (
+                               <div
+                                 key={f.id}
+                                 onClick={() => setFirmaId(f.id!)}
+                                 className={cn(
+                                   "p-4 rounded-xl border cursor-pointer transition-all duration-200 flex items-start gap-3 hover:scale-[1.005] hover:shadow-xs",
+                                   firmaId === f.id 
+                                     ? "bg-indigo-50/40 border-indigo-350 dark:bg-indigo-950/20 dark:border-indigo-850 shadow-xs" 
+                                     : "bg-white border-slate-200 hover:bg-slate-50/50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-850/50"
+                                 )}
+                               >
+                                 <div className={cn(
+                                   "w-5 h-5 rounded-full border flex flex-col items-center justify-center shrink-0 mt-0.5 transition-colors", 
+                                   firmaId === f.id 
+                                     ? "bg-indigo-600 border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500 text-white" 
+                                     : "bg-white border-slate-300 dark:bg-slate-800 dark:border-slate-700"
+                                 )}>
+                                    {firmaId === f.id && <Check className="w-3 h-3 stroke-[3]" />}
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                   <p className={cn("font-bold text-sm leading-tight truncate", firmaId === f.id ? "text-indigo-900 dark:text-indigo-300" : "text-slate-800 dark:text-slate-200")}>
+                                     {f.name}
+                                   </p>
+                                   <p className={cn("text-[10px] uppercase font-bold tracking-widest mt-1 font-mono", firmaId === f.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500")}>
+                                     NIF: {f.nif}
+                                   </p>
+                                 </div>
+                               </div>
                              ))}
-                          </div>
-                        );
-                      }
-                      return (
-                        <input 
-                          type="text" 
-                          value={atividadeEconomica}
-                          onChange={e => setAtividadeEconomica(e.target.value)}
-                          placeholder="Ex: Comercialização de bebidas"
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium text-slate-800"
-                        />
-                      );
-                   })()}
+                             {visibleFirmsCount < filtered.length && (
+                               <div className="py-2 text-center text-[10px] text-slate-400 font-bold animate-pulse">
+                                 A carregar mais operadores...
+                               </div>
+                             )}
+                           </>
+                         );
+                       })()}
+                   </div>
+                </>
+             )}
+
+             {/* Representative & Economic Activity - Only shown AFTER selecting a firma */}
+              {firmaId && (
+                <div className="space-y-4 shrink-0 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom duration-300">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Representante no Local</label>
+                    <input 
+                      type="text" 
+                      value={representante}
+                      onChange={e => setRepresentante(e.target.value)}
+                      placeholder="Nome do representante..."
+                      className="w-full p-4 bg-slate-50 dark:bg-slate-855 border border-slate-200 dark:border-slate-800 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-semibold text-slate-800 dark:text-slate-150 transition-all outline-none"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between pl-1">
+                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Atividade Económica em Vistoria</label>
+                      {!showAddAtividade && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddAtividade(true);
+                            setNewAtivRamo(RAMOS[0]);
+                          }}
+                          className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> ADICIONAR ATIVIDADE
+                        </button>
+                      )}
+                    </div>
+                    {showAddAtividade ? (
+                      <div className="p-5 bg-slate-50 dark:bg-slate-950/30 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-left">
+                        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-850 pb-2">
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Nova Atividade Económica</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddAtividade(false)}
+                            className="text-[10px] font-bold text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Ramo de Atividade</label>
+                          <select
+                            value={newAtivRamo}
+                            onChange={e => setNewAtivRamo(e.target.value)}
+                            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {RAMOS.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Atividade Económica *</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Venda de Sapatos"
+                            value={newAtivAtividade}
+                            onChange={e => setNewAtivAtividade(e.target.value)}
+                            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Local Específico *</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Loja 3 - Mercado Municipal"
+                            value={newAtivLocal}
+                            onChange={e => setNewAtivLocal(e.target.value)}
+                            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isSavingAtividade || !newAtivRamo || !newAtivAtividade.trim() || !newAtivLocal.trim()}
+                          onClick={handleSaveNewAtividade}
+                          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:bg-slate-400 dark:disabled:bg-slate-800 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer font-sans"
+                        >
+                          {isSavingAtividade ? 'A guardar...' : 'Guardar Atividade'}
+                        </button>
+                      </div>
+                    ) : (
+                      (() => {
+                         const f = firmas?.find(x => x.id === firmaId);
+                         if (f && f.atividades && f.atividades.length > 0) {
+                           return (
+                             <div className="grid grid-cols-1 gap-2">
+                                {f.atividades.map((ativ, i) => (
+                                   <div 
+                                      key={i}
+                                      onClick={() => setAtividadeEconomica(ativ.atividade)}
+                                      className={cn(
+                                        "p-4 border rounded-xl cursor-pointer transition-all duration-200 relative", 
+                                        atividadeEconomica === ativ.atividade 
+                                          ? "bg-blue-50/40 border-blue-300 dark:bg-blue-950/20 dark:border-blue-900 shadow-xs" 
+                                          : "bg-white border-slate-200 hover:bg-slate-50/50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-850/50"
+                                      )}
+                                   >
+                                      <div className="flex items-start gap-3">
+                                         <div className={cn(
+                                           "w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors", 
+                                           atividadeEconomica === ativ.atividade 
+                                             ? "bg-blue-600 border-blue-600 dark:bg-blue-500 dark:border-blue-500" 
+                                             : "bg-white border-slate-300 dark:bg-slate-800 dark:border-slate-700"
+                                         )}>
+                                            {atividadeEconomica === ativ.atividade && <div className="w-2 h-2 bg-white rounded-full" />}
+                                         </div>
+                                         <div className="text-left">
+                                            <p className={cn("font-bold text-sm", atividadeEconomica === ativ.atividade ? "text-blue-900 dark:text-blue-300" : "text-slate-800 dark:text-slate-200")}>{ativ.atividade}</p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-450 mt-1">{ativ.ramo} • {ativ.local}</p>
+                                         </div>
+                                      </div>
+                                    </div>
+                                 ))}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="p-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl text-center text-xs text-amber-700 dark:text-amber-450 font-semibold space-y-3">
+                               <p>Este operador económico não possui atividades registadas.</p>
+                               <button 
+                                 type="button"
+                                 onClick={() => {
+                                   setShowAddAtividade(true);
+                                   setNewAtivRamo(RAMOS[0]);
+                                 }}
+                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white rounded-lg font-bold shadow-xs transition-all text-xs cursor-pointer"
+                               >
+                                 Criar Atividade no Local
+                               </button>
+                            </div>
+                          );
+                       })()
+                     )}
+                   </div>
                  </div>
                )}
-             </div>
           </div>
         )}
 
@@ -536,85 +887,127 @@ export default function NovaVisita() {
         {/* STEP 3 */}
         {step === 3 && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-             
-             {/* Search box for infractions */}
-             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0">
+             <div className="bg-white p-4 rounded-xl border border-slate-200 dark:bg-slate-900 dark:border-slate-700 shadow-sm shrink-0">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 pl-1">Pesquisar Catálogo de Infrações</label>
                 <div className="relative">
                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                   <input 
+                   <input
                       type="text"
-                      placeholder="Procurar por legislação, infração ou artigo de lei..."
+                      placeholder="Procurar por tipo ou legislação..."
                       value={searchInfracao}
                       onChange={e => setSearchInfracao(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-800"
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-800 dark:text-slate-100"
                    />
                 </div>
              </div>
 
-             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 pl-1">
-                Catálogo de Infrações ({predefinedInfracoes.filter(inf => 
-                  inf.type.toLowerCase().includes(searchInfracao.toLowerCase()) || 
-                  inf.legalInstrument?.toLowerCase().includes(searchInfracao.toLowerCase()) || 
-                  inf.details?.toLowerCase().includes(searchInfracao.toLowerCase())
-                ).length} encontradas)
+             {infracoes.length > 0 && (
+               <div className="flex flex-wrap gap-1.5 px-1">
+                 <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider self-center mr-1">Selecionadas:</span>
+                 {infracoes.map(i => (
+                   <span key={i.type} className="flex items-center gap-1 text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 px-2 py-1 rounded-full">
+                     {i.type.length > 25 ? i.type.substring(0, 25) + '…' : i.type}
+                     <button onClick={() => toggleInfracao(i.type, i.severity)} className="ml-0.5 hover:text-red-600"><X className="w-3 h-3" /></button>
+                   </span>
+                 ))}
+               </div>
+             )}
+
+             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+               Catálogo ({predefinedInfracoes.filter(inf => inf.type.toLowerCase().includes(searchInfracao.toLowerCase()) || inf.legalInstrument?.toLowerCase().includes(searchInfracao.toLowerCase())).length} encontradas)
              </p>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {predefinedInfracoes
-                   .filter(inf => 
-                      inf.type.toLowerCase().includes(searchInfracao.toLowerCase()) || 
-                      inf.legalInstrument?.toLowerCase().includes(searchInfracao.toLowerCase()) || 
-                      inf.details?.toLowerCase().includes(searchInfracao.toLowerCase())
-                   )
-                   .map(inf => {
-                      const isSelected = infracoes.some(i => i.type === inf.type);
-                      return (
-                         <div 
-                            key={inf.type}
-                            onClick={() => toggleInfracao(inf.type, inf.severity)}
-                            className={cn(
-                               "p-4 rounded-2xl border flex flex-col cursor-pointer transition-all gap-2 relative overflow-hidden",
-                               isSelected 
-                                 ? "bg-red-50/50 border-red-400 ring-2 ring-red-500/20 shadow-md" 
-                                 : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
-                            )}
-                         >
-                            <div className="flex items-start justify-between gap-2">
-                               <div className="flex items-start gap-2.5">
-                                  <div className={cn(
-                                     "w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5",
-                                     isSelected ? "bg-red-600 text-white" : "border border-slate-300 bg-slate-50"
-                                  )}>
-                                     {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                                  </div>
-                                  <span className={cn("text-xs font-bold leading-tight", isSelected ? "text-red-950 font-black" : "text-slate-800")}>
-                                     {inf.type}
-                                  </span>
-                               </div>
-                               <span className={cn(
-                                  "text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded leading-none shrink-0",
-                                  inf.severity === 'Baixa' ? "bg-amber-100 text-amber-800" :
-                                  inf.severity === 'Alta' ? "bg-orange-100 text-orange-850" : "bg-red-600 text-white"
-                               )}>
-                                  {inf.severity}
-                               </span>
-                            </div>
-
-                            {/* Legal frame */}
-                            <div className="px-2.5 py-1 bg-slate-100/80 rounded-md border border-slate-200/50 flex items-center gap-1.5 text-[9px] font-bold text-slate-500 leading-none">
-                               <span className="text-slate-400">📖 Enquadramento:</span>
-                               <span className="text-slate-700 font-mono">{inf.legalInstrument}</span>
-                            </div>
-
-                            {/* Details text */}
-                            <p className="text-[11px] leading-relaxed text-slate-500 font-medium pl-1">
-                               {inf.details}
-                            </p>
-                         </div>
-                      )
-                   })}
+             <div className="space-y-2">
+               {predefinedInfracoes
+                 .filter(inf => inf.type.toLowerCase().includes(searchInfracao.toLowerCase()) || inf.legalInstrument?.toLowerCase().includes(searchInfracao.toLowerCase()))
+                 .map(inf => {
+                   const isSelected = infracoes.some(i => i.type === inf.type);
+                   const severityColor =
+                     inf.severity === 'Crítica' ? 'bg-red-600 text-white' :
+                     inf.severity === 'Alta' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' :
+                     'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300';
+                   return (
+                     <div
+                       key={inf.type}
+                       className={cn(
+                         'flex items-center gap-3 p-3 rounded-xl border transition-all',
+                         isSelected
+                           ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700'
+                           : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                       )}
+                     >
+                       <button
+                         onClick={() => toggleInfracao(inf.type, inf.severity)}
+                         className={cn(
+                           'w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors',
+                           isSelected ? 'bg-red-600 border-red-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                         )}
+                       >
+                         {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                       </button>
+                       <span
+                         className={cn('flex-1 text-xs font-semibold leading-tight cursor-pointer', isSelected ? 'text-red-900 dark:text-red-200' : 'text-slate-800 dark:text-slate-100')}
+                         onClick={() => toggleInfracao(inf.type, inf.severity)}
+                       >
+                         {inf.type}
+                       </span>
+                       <span className={cn('text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0', severityColor)}>
+                         {inf.severity}
+                       </span>
+                       <button
+                         onClick={() => setSelectedInfraction(inf)}
+                         className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                         title="Ver detalhes"
+                       >
+                         <ChevronRight className="w-4 h-4" />
+                       </button>
+                     </div>
+                   );
+                 })}
              </div>
+
+             {/* Penas por infração seleccionada */}
+             {infracoes.length > 0 && (
+               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Penas Aplicáveis (por Infração)</p>
+                 {infracoes.map(inf => (
+                   <div key={inf.type} className="space-y-1">
+                     <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">{inf.type}</p>
+                     <div className="grid grid-cols-2 gap-2">
+                       <div>
+                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Pena Mínima (STN)</label>
+                         <input
+                           type="number"
+                           min="0"
+                           step="0.01"
+                           placeholder="0.00"
+                           value={inf.minimum_penalty || ''}
+                           onChange={e => updateInfracaoPenalty(inf.type, 'minimum_penalty', e.target.value)}
+                           className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 font-mono"
+                         />
+                       </div>
+                       <div>
+                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Pena Máxima (STN)</label>
+                         <input
+                           type="number"
+                           min="0"
+                           step="0.01"
+                           placeholder="0.00"
+                           value={inf.maximum_penalty || ''}
+                           onChange={e => updateInfracaoPenalty(inf.type, 'maximum_penalty', e.target.value)}
+                           className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 font-mono"
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             )}
+
+             <InfractionDetailDrawer
+               infraction={selectedInfraction}
+               onClose={() => setSelectedInfraction(null)}
+             />
           </div>
         )}
 
@@ -628,6 +1021,87 @@ export default function NovaVisita() {
                    Selecione as recomendações pedagógicas de asseio ou conformidade legal pré-cadastradas para aplicar neste operador, ou adicione itens à medida das necessidades do local.
                 </p>
              </div>
+
+             {/* Recomendações Históricas do mesmo operador */}
+             {historicoVisitas.length > 0 && (
+               <div className="space-y-3">
+                 <div className="flex items-center gap-2">
+                   <History className="w-4 h-4 text-indigo-500" />
+                   <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                     Recomendações Anteriores neste Operador ({historicoVisitas.reduce((s, v) => s + v.recomendacoes.length, 0)})
+                   </label>
+                 </div>
+                 <div className="space-y-3">
+                   {historicoVisitas.map(v => v.recomendacoes.map((rec, ri) => {
+                     const existingEntry = recomendacoesHistoricas.find(
+                       r => r.visitaOrigemId === v.id && r.text === rec
+                     );
+                     return (
+                       <div key={`${v.id}-${ri}`} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
+                         <p className="text-xs font-medium text-slate-700 dark:text-slate-200 leading-snug">{rec}</p>
+                         <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                             <span className="font-mono">{v.date}</span>
+                             <span>·</span>
+                             <span>{v.technicians.slice(0, 2).join(', ')}{v.technicians.length > 2 ? ` +${v.technicians.length - 2}` : ''}</span>
+                           </div>
+                           <div className="flex items-center gap-1">
+                             <button
+                               type="button"
+                               onClick={() => {
+                                 setRecomendacoesHistoricas(prev => {
+                                   const existing = prev.find(r => r.visitaOrigemId === v.id && r.text === rec);
+                                   if (existing) {
+                                     return prev.map(r => r.visitaOrigemId === v.id && r.text === rec
+                                       ? { ...r, atendida: r.atendida === true ? null : true }
+                                       : r
+                                     );
+                                   }
+                                   return [...prev, { text: rec, visitaOrigemId: v.id, dataOrigem: v.date, equipaOrigem: v.technicians, atendida: true }];
+                                 });
+                               }}
+                               className={cn(
+                                 'flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors',
+                                 existingEntry?.atendida === true
+                                   ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 text-emerald-800 dark:text-emerald-300'
+                                   : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-emerald-300 hover:text-emerald-700'
+                               )}
+                             >
+                               <Check className="w-3 h-3" />
+                               Acatada
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => {
+                                 setRecomendacoesHistoricas(prev => {
+                                   const existing = prev.find(r => r.visitaOrigemId === v.id && r.text === rec);
+                                   if (existing) {
+                                     return prev.map(r => r.visitaOrigemId === v.id && r.text === rec
+                                       ? { ...r, atendida: r.atendida === false ? null : false }
+                                       : r
+                                     );
+                                   }
+                                   return [...prev, { text: rec, visitaOrigemId: v.id, dataOrigem: v.date, equipaOrigem: v.technicians, atendida: false }];
+                                 });
+                               }}
+                               className={cn(
+                                 'flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors',
+                                 existingEntry?.atendida === false
+                                   ? 'bg-red-100 dark:bg-red-900/30 border-red-300 text-red-800 dark:text-red-300'
+                                   : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-red-300 hover:text-red-700'
+                               )}
+                             >
+                               <X className="w-3 h-3" />
+                               Não Acatada
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+                     );
+                   }))}
+                 </div>
+               </div>
+             )}
 
              {/* Pre-registered recommendations array as cards */}
              <div className="space-y-2.5">
@@ -734,18 +1208,36 @@ export default function NovaVisita() {
 
         {/* STEP 5 */}
         {step === 5 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Captura de Provas</p>
-             
+
+             {showCamera && (
+               <CameraCapture
+                 onCapture={(file) => {
+                   setAnexos(prev => [...prev, { file, url: URL.createObjectURL(file) }]);
+                 }}
+                 onClose={() => setShowCamera(false)}
+               />
+             )}
+
              <div className="grid grid-cols-2 gap-4">
-               <button onClick={() => cameraInputRef.current?.click()} className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 border border-slate-200 border-dashed rounded-2xl hover:bg-slate-100 transition-colors text-blue-600">
+               <button
+                 onClick={() => {
+                   if (navigator.mediaDevices?.getUserMedia) {
+                     setShowCamera(true);
+                   } else {
+                     cameraInputRef.current?.click();
+                   }
+                 }}
+                 className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-blue-600"
+               >
                   <Camera className="w-8 h-8" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tirar Foto</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Câmara</span>
                </button>
-               
-               <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 border border-slate-200 border-dashed rounded-2xl hover:bg-slate-100 transition-colors text-blue-600">
+
+               <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-blue-600">
                   <ImageIcon className="w-8 h-8" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Galeria</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Galeria</span>
                </button>
              </div>
 
@@ -782,8 +1274,97 @@ export default function NovaVisita() {
           </div>
         )}
 
-        {/* STEP 6 */}
+        {/* STEP 6 — Produtos de Cesta Básica */}
         {step === 6 && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-1">
+              <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Produtos de Cesta Básica</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Registe os preços praticados pelo operador e compare com o livro de cálculo em vigor.
+              </p>
+            </div>
+
+            {supplyStatus === 'loading' && (
+              <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-xs font-medium">A carregar livro de cálculo...</span>
+              </div>
+            )}
+
+            {supplyStatus === 'none' && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 text-center space-y-2">
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Sem livro de cálculo disponível</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400">Este operador não possui livro de cálculo de preço aprovado ou a ligação está indisponível. Pode avançar para o próximo passo.</p>
+              </div>
+            )}
+
+            {supplyStatus === 'active' && supplyProducts.map(produto => {
+              const prices = produtosPrices[produto.id] || { gross: '', retail: '' };
+              const grossNum = prices.gross ? parseFloat(prices.gross) : null;
+              const retailNum = prices.retail ? parseFloat(prices.retail) : null;
+              const grossConform = grossNum != null && produto.grossPrice != null ? grossNum <= produto.grossPrice : null;
+              const retailConform = retailNum != null && produto.retailPrice != null ? retailNum <= produto.retailPrice : null;
+              return (
+                <div key={produto.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{produto.name}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Preço Grosso (STN)</label>
+                      {produto.grossPrice != null && (
+                        <p className="text-[10px] text-slate-400">Livro: <span className="font-mono font-bold">{produto.grossPrice.toFixed(2)}</span></p>
+                      )}
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={prices.gross}
+                          onChange={e => setProdutosPrices(prev => ({ ...prev, [produto.id]: { ...prev[produto.id], gross: e.target.value, retail: prev[produto.id]?.retail || '' } }))}
+                          className={cn(
+                            'w-full p-2.5 text-xs border rounded-xl font-mono bg-slate-50 dark:bg-slate-800 dark:text-slate-100',
+                            grossConform === true ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' :
+                            grossConform === false ? 'border-red-400 bg-red-50 dark:bg-red-900/20' :
+                            'border-slate-200 dark:border-slate-700'
+                          )}
+                        />
+                        {grossConform === true && <span className="absolute right-2 top-2 text-emerald-600 text-[10px] font-bold">✓</span>}
+                        {grossConform === false && <span className="absolute right-2 top-2 text-red-600 text-[10px] font-bold">✗</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Preço Retalho (STN)</label>
+                      {produto.retailPrice != null && (
+                        <p className="text-[10px] text-slate-400">Livro: <span className="font-mono font-bold">{produto.retailPrice.toFixed(2)}</span></p>
+                      )}
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={prices.retail}
+                          onChange={e => setProdutosPrices(prev => ({ ...prev, [produto.id]: { ...prev[produto.id], retail: e.target.value, gross: prev[produto.id]?.gross || '' } }))}
+                          className={cn(
+                            'w-full p-2.5 text-xs border rounded-xl font-mono bg-slate-50 dark:bg-slate-800 dark:text-slate-100',
+                            retailConform === true ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' :
+                            retailConform === false ? 'border-red-400 bg-red-50 dark:bg-red-900/20' :
+                            'border-slate-200 dark:border-slate-700'
+                          )}
+                        />
+                        {retailConform === true && <span className="absolute right-2 top-2 text-emerald-600 text-[10px] font-bold">✓</span>}
+                        {retailConform === false && <span className="absolute right-2 top-2 text-red-600 text-[10px] font-bold">✗</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* STEP 7 — Revisão e Auto-Certificação */}
+        {step === 7 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 pb-12">
              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-800 p-6 rounded-2xl border border-emerald-200 flex flex-col items-center text-center shadow-xs">
                 <CheckCircle className="w-12 h-12 mb-2 text-emerald-600 animate-pulse" />
@@ -881,18 +1462,14 @@ export default function NovaVisita() {
                 ) : (
                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-center text-xs space-y-2">
                       <p className="text-amber-800 font-bold">Sem Sinal GPS Ativo</p>
-                      <p className="text-amber-700 font-medium leading-relaxed">As coordenadas da visita não puderam ser obtidas automaticamente. Certifique-se de que o browser tem ativa a permissão de localização.</p>
-                      <button 
+                      <p className="text-amber-700 font-medium leading-relaxed">
+                        {isWebviewMode()
+                          ? 'A aguardar dados de localização do dispositivo nativo. Certifique-se de que o GPS está ativo.'
+                          : 'As coordenadas não puderam ser obtidas. Certifique-se de que o browser tem ativa a permissão de localização.'}
+                      </p>
+                      <button
                          type="button"
-                         onClick={() => {
-                            if (navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition(
-                                pos => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                                err => alert('Não foi possível obter a sua localização. Ative o GPS.'),
-                                { enableHighAccuracy: true, timeout: 5000 }
-                              );
-                            }
-                         }}
+                         onClick={refreshGeo}
                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] rounded-lg tracking-wider uppercase"
                       >
                          Tentar Capturar GPS
@@ -1021,30 +1598,30 @@ export default function NovaVisita() {
       </div>
 
       {/* Floating Bottom Bar Navigation */}
-      <div className="bg-white border-t border-slate-200 p-4 flex gap-4 shrink-0 mt-auto relative z-10 font-sans">
+      <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 flex gap-4 shrink-0 mt-auto relative z-10 font-sans">
          {step > 1 && (
             <button 
                onClick={handlePrev}
-               className="px-6 py-3.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+               className="px-6 py-3.5 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 transition-colors"
             >
                Anterior
             </button>
          )}
-         {step < 6 ? (
-            <button 
+         {step < TOTAL_STEPS ? (
+            <button
                onClick={handleNext}
                disabled={
-                  (step === 1 && (!firmaId || !atividadeEconomica)) || 
+                  (step === 1 && (!firmaId || !atividadeEconomica)) ||
                   (step === 2 && technicians.length === 0)
                }
-               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 disabled:opacity-50 disabled:bg-slate-400 hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200/50"
+               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 disabled:opacity-50 disabled:bg-slate-400 dark:disabled:bg-slate-800 hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200/50 dark:shadow-none"
             >
                Próximo Passo
             </button>
          ) : (
-            <button 
+            <button
                onClick={handleSubmit}
-               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
+               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 dark:bg-slate-950 hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors shadow-lg shadow-slate-900/20 dark:shadow-none"
             >
                Finalizar Registo
             </button>

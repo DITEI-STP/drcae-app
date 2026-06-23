@@ -1,0 +1,188 @@
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
+
+export function getJwtToken(): string | null {
+  return sessionStorage.getItem('drcae_jwt');
+}
+
+export function setJwtToken(token: string | null) {
+  if (token) {
+    sessionStorage.setItem('drcae_jwt', token);
+  } else {
+    sessionStorage.removeItem('drcae_jwt');
+  }
+}
+
+// Fingerprint ou ID estável do dispositivo (salvo no localStorage)
+export function getDeviceId(): string {
+  let deviceId = localStorage.getItem('drcae_device_id');
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('drcae_device_id', deviceId);
+  }
+  return deviceId;
+}
+
+// Wrapper fetch com injeção de JWT e tratamento automático de expiração (401)
+async function request(path: string, options: RequestInit = {}): Promise<any> {
+  const url = `${API_BASE}/${path}`;
+  const headers = new Headers(options.headers || {});
+  
+  const token = getJwtToken();
+  if (token) {
+    headers.set('Authorization', token);
+  }
+  headers.set('Content-Type', 'application/json');
+
+  let response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401 && !path.includes('auth/refresh') && !path.includes('auth/login')) {
+    // Tentar refresh silencioso via cookie HttpOnly
+    const refreshed = await refreshSilent();
+    if (refreshed) {
+      // Repetir a requisição original com o novo token
+      headers.set('Authorization', getJwtToken() || '');
+      response = await fetch(url, { ...options, headers });
+    } else {
+      // Limpar chave de encriptação e forçar redirect para login
+      setJwtToken(null);
+      window.dispatchEvent(new Event('auth-expired'));
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+  }
+
+  if (response.status === 403) {
+    const errJson = await response.json().catch(() => ({}));
+    const msg = errJson.message || 'Acesso negado.';
+    if (msg.includes('aprovação')) {
+      window.dispatchEvent(new CustomEvent('device-pending-approval', { detail: { message: msg } }));
+    }
+    throw new Error(msg);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `Erro HTTP ${response.status}`;
+    try {
+      const errJson = JSON.parse(errorText);
+      errorMessage = errJson.message || errorMessage;
+    } catch {}
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+// 1. Obter salt
+export async function getSalt(): Promise<{ salt: string }> {
+  return request('auth/salt');
+}
+
+// 1.5. Verificar status de emparelhamento do dispositivo
+export async function checkDeviceStatus(): Promise<{ paired: boolean; officer_name: string | null }> {
+  const deviceId = getDeviceId();
+  return request(`auth/device-status?device_id=${deviceId}`);
+}
+
+// 1.6. Emparelhar dispositivo com código
+export async function pairDevice(code: string): Promise<{ success: boolean; officer_name: string }> {
+  const deviceId = getDeviceId();
+  return request('auth/pair', {
+    method: 'POST',
+    body: JSON.stringify({ device_id: deviceId, code }),
+  });
+}
+
+// 2. Login
+export async function login(nif: string, password: string): Promise<any> {
+  const deviceId = getDeviceId();
+  const response = await request('auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ nif, password, device_id: deviceId }),
+  });
+
+  if (response.access) {
+    setJwtToken(response.access);
+  }
+  if (response.officer) {
+    localStorage.setItem('drcae_officer_info', JSON.stringify(response.officer));
+  }
+  return response;
+}
+
+// 3. Refresh silencioso (usa cookie HttpOnly)
+export async function refreshSilent(): Promise<boolean> {
+  const deviceId = getDeviceId();
+  try {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.access) {
+        setJwtToken(data.access);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.error('Falha no refresh silencioso:', err);
+  }
+  return false;
+}
+
+// 4. Logout
+export async function logout(): Promise<void> {
+  try {
+    await request('auth/logout', { method: 'POST' });
+  } catch (err) {
+    console.error('Erro ao chamar logout no servidor:', err);
+  } finally {
+    setJwtToken(null);
+  }
+}
+
+// 5. Pull Sync
+export async function pullSync(since: string | null, profile = 'standard'): Promise<any> {
+  const deviceId = getDeviceId();
+  const params = new URLSearchParams({
+    device_id: deviceId,
+    profile,
+  });
+  if (since) {
+    params.set('since', since);
+  }
+  return request(`sync/pull?${params.toString()}`);
+}
+
+// 6. Push Sync
+export async function pushSync(payload: any): Promise<any> {
+  return request('sync/push', {
+    method: 'POST',
+    body: JSON.stringify({
+      device_id: getDeviceId(),
+      ...payload,
+    }),
+  });
+}
+
+// 7. Obter tabelas de referência
+export async function getAssets(): Promise<any> {
+  return request('assets');
+}
+
+// 8. Produtos de Cesta Básica do operador
+export async function getOperatorSupply(operatorUid: string): Promise<{ bookStatus: string; products: { id: number; name: string; grossPrice: number | null; retailPrice: number | null }[] }> {
+  return request(`operator-supply/${operatorUid}`);
+}
+
+// 9. Exportar pacote offline manual
+export async function exportPackage(profile = 'standard'): Promise<any> {
+  return request('sync/export', {
+    method: 'POST',
+    body: JSON.stringify({ profile }),
+  });
+}

@@ -18,13 +18,10 @@ export default function Dashboard() {
     const saved = localStorage.getItem('drcae_equipe');
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        setEquipe(parsed);
+        setEquipe(JSON.parse(saved));
       } catch (e) {
-        setEquipe(['Agente Carvalho', 'Agente Silva']);
+        setEquipe([]);
       }
-    } else {
-      setEquipe(['Agente Carvalho', 'Agente Silva']); // default
     }
   }, []);
 

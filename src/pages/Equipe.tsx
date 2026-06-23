@@ -5,70 +5,92 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 
+interface OfficerOption {
+  id: string;
+  name: string;
+  nif: string;
+  district?: string;
+}
+
 export default function Equipe() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<string[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Equipa atualizada com sucesso!');
+  const [toastError, setToastError] = useState(false);
   const [equipeDefinida, setEquipeDefinida] = useState(() => {
     return localStorage.getItem('drcae_equipe_definida') === 'true';
   });
 
-  // Load equipe from localStorage or set defaults
+  const officersList: OfficerOption[] = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('drcae_officers_list') || '[]');
+    } catch { return []; }
+  })();
+
   useEffect(() => {
     const saved = localStorage.getItem('drcae_equipe');
     if (saved) {
       try {
         setMembers(JSON.parse(saved));
       } catch (e) {
-        setMembers(['Agente Carvalho', 'Agente Silva']);
+        setMembers([]);
       }
-    } else {
-      const defaults = ['Agente Carvalho', 'Agente Silva'];
-      setMembers(defaults);
-      localStorage.setItem('drcae_equipe', JSON.stringify(defaults));
     }
   }, []);
+
+  const showToast = (message: string, error = false) => {
+    setToastMessage(message);
+    setToastError(error);
+    setShowSavedToast(true);
+    setTimeout(() => setShowSavedToast(false), 2500);
+  };
 
   const saveTeam = (updatedMembers: string[]) => {
     setMembers(updatedMembers);
     localStorage.setItem('drcae_equipe', JSON.stringify(updatedMembers));
     localStorage.setItem('drcae_equipe_definida', 'true');
     setEquipeDefinida(true);
-    setShowSavedToast(true);
-    setTimeout(() => setShowSavedToast(false), 2000);
+    showToast('Equipa atualizada com sucesso!');
   };
 
   const handleConfirmarEquipeDirecto = () => {
+    const isFirstTime = localStorage.getItem('drcae_equipe_definida') !== 'true';
     localStorage.setItem('drcae_equipe_definida', 'true');
     setEquipeDefinida(true);
-    setShowSavedToast(true);
-    setTimeout(() => setShowSavedToast(false), 2000);
-    alert('Composição da equipa e escala de trabalho diária confirmadas com sucesso! O registo de operadores e novas fiscalizações encontra-se agora perfeitamente DESBLOQUEADO e ativo na aplicação.');
+    showToast(isFirstTime ? 'Equipa confirmada — funcionalidades desbloqueadas!' : 'Composição de equipa gravada!');
+    if (isFirstTime) {
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+    }
   };
 
   const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
     const name = newMemberName.trim();
     if (!name) return;
-    
     if (members.includes(name)) {
-      alert('Este membro já está adicionado na equipa.');
+      showToast('Este agente já está na equipa.', true);
       return;
     }
-    
-    const updated = [...members, name];
-    saveTeam(updated);
+    saveTeam([...members, name]);
     setNewMemberName('');
+  };
+
+  const handleToggleOfficer = (officer: OfficerOption) => {
+    if (members.includes(officer.name)) {
+      saveTeam(members.filter(m => m !== officer.name));
+    } else {
+      saveTeam([...members, officer.name]);
+    }
   };
 
   const handleRemoveMember = (nameToRemove: string) => {
     if (members.length <= 1) {
-      alert('A equipa deve conter pelo menos um agente fiscalizador.');
+      showToast('A equipa deve ter pelo menos um agente.', true);
       return;
     }
-    const updated = members.filter(m => m !== nameToRemove);
-    saveTeam(updated);
+    saveTeam(members.filter(m => m !== nameToRemove));
   };
 
   const todayFormatted = format(new Date(), "eeee, d 'de' MMMM 'de' yyyy", { locale: ptBR });
@@ -86,7 +108,6 @@ export default function Equipe() {
             <p className="text-xs text-slate-500 font-medium">Configure a equipa de agentes de serviço para o dia de hoje.</p>
           </div>
         </div>
-        
         <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold">
           <Calendar className="w-4 h-4 text-indigo-500" />
           <span className="capitalize">{todayFormatted}</span>
@@ -95,31 +116,66 @@ export default function Equipe() {
 
       {/* Status callout banner */}
       {equipeDefinida ? (
-         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3 text-xs items-center animate-in fade-in duration-300">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
-               <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div className="space-y-0.5 flex-1 text-left">
-               <p className="font-bold text-emerald-950">Ambiente Validado e Habilitado</p>
-               <p className="text-emerald-700 font-medium leading-tight">
-                  A equipa diária está confirmada juridicamente. O registo de fiscalizações e cadastro de operadores está ativo.
-               </p>
-            </div>
-            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full uppercase tracking-wider">Ativo</span>
-         </div>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3 text-xs items-center animate-in fade-in duration-300">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div className="space-y-0.5 flex-1 text-left">
+            <p className="font-bold text-emerald-950">Ambiente Validado e Habilitado</p>
+            <p className="text-emerald-700 font-medium leading-tight">
+              A equipa diária está confirmada juridicamente. O registo de fiscalizações e cadastro de operadores está ativo.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full uppercase tracking-wider">Ativo</span>
+        </div>
       ) : (
-         <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex gap-3 text-xs items-center animate-pulse">
-            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
-               <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div className="space-y-0.5 flex-1 text-left">
-               <p className="font-bold text-amber-950">Definição Extraordinária Pendente</p>
-               <p className="text-amber-800 font-medium leading-tight text-left">
-                  Por norma jurídica da DRCAE, configure a equipa abaixo e clique em "Confirmar & Gravar" para desbloquear as funcionalidades de registo.
-               </p>
-            </div>
-            <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-wider">Bloqueado</span>
-         </div>
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex gap-3 text-xs items-center animate-pulse">
+          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="space-y-0.5 flex-1 text-left">
+            <p className="font-bold text-amber-950">Definição Extraordinária Pendente</p>
+            <p className="text-amber-800 font-medium leading-tight text-left">
+              Por norma jurídica da DRCAE, configure a equipa abaixo e clique em "Confirmar & Gravar" para desbloquear as funcionalidades de registo.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-wider">Bloqueado</span>
+        </div>
+      )}
+
+      {/* Seleção rápida de agents reais (se disponíveis) */}
+      {officersList.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Agentes Disponíveis (do Sistema)</span>
+          </div>
+          <div className="p-4 flex flex-wrap gap-2">
+            {officersList.map((officer) => {
+              const selected = members.includes(officer.name);
+              return (
+                <button
+                  key={officer.id}
+                  type="button"
+                  onClick={() => handleToggleOfficer(officer)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all',
+                    selected
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
+                  )}
+                >
+                  {selected && <Check className="w-3.5 h-3.5" />}
+                  {officer.name}
+                  {officer.district && (
+                    <span className={cn('text-[10px] font-medium', selected ? 'text-indigo-200' : 'text-slate-400')}>
+                      · {officer.district}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Main configuration Card */}
@@ -132,7 +188,7 @@ export default function Equipe() {
         {/* Members List */}
         <div className="p-4 space-y-2.5">
           {members.map((member, idx) => (
-            <div 
+            <div
               key={member}
               className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition-all group scale-100"
             >
@@ -145,7 +201,6 @@ export default function Equipe() {
                   <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest mt-0.5">Oficial de Fiscalização</p>
                 </div>
               </div>
-              
               <button
                 type="button"
                 onClick={() => handleRemoveMember(member)}
@@ -159,15 +214,15 @@ export default function Equipe() {
 
           {members.length === 0 && (
             <div className="text-center py-6 text-slate-400 text-xs">
-              Nenhum agente escalado para hoje. Adicione um oficial abaixo.
+              Nenhum agente escalado para hoje. {officersList.length > 0 ? 'Selecione acima ou adicione manualmente.' : 'Adicione um oficial abaixo.'}
             </div>
           )}
         </div>
 
-        {/* Add new member form */}
+        {/* Add new member form (manual / fallback offline) */}
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
           <form onSubmit={handleAddMember} className="space-y-3">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Agente/Oficial</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Agente Manualmente</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -189,14 +244,14 @@ export default function Equipe() {
 
         {/* Explicit confirmation button */}
         <div className="p-4 border-t border-slate-100 bg-indigo-50/20 flex justify-end">
-           <button
-              type="button"
-              onClick={handleConfirmarEquipeDirecto}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 uppercase tracking-widest"
-           >
-              <ShieldCheck className="w-4 h-4 text-white" />
-              Confirmar & Gravar Composição de Equipa
-           </button>
+          <button
+            type="button"
+            onClick={handleConfirmarEquipeDirecto}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 uppercase tracking-widest"
+          >
+            <ShieldCheck className="w-4 h-4 text-white" />
+            Confirmar & Gravar Composição de Equipa
+          </button>
         </div>
       </div>
 
@@ -213,29 +268,32 @@ export default function Equipe() {
 
       {/* Toast Notification */}
       {showSavedToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-2.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 z-50">
-          <Check className="w-4 h-4 text-emerald-400" />
-          <span>Equipa atualizada com sucesso!</span>
+        <div className={cn(
+          "fixed bottom-24 left-1/2 -translate-x-1/2 text-white px-4 py-2.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 z-50",
+          toastError ? "bg-red-600" : "bg-slate-900"
+        )}>
+          <Check className={cn("w-4 h-4", toastError ? "text-red-200" : "text-emerald-400")} />
+          <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Call to action: nova fiscalização */}
       <div className="pt-4 border-t border-slate-200">
-         <button
-            onClick={() => navigate('/visitas/nova')}
-            className="w-full flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-all font-bold group shadow-xl shadow-slate-900/10"
-         >
-            <div className="flex items-center gap-3">
-               <div className="p-2 bg-slate-800 text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
-                  <ShieldCheck className="w-4 h-4" />
-               </div>
-               <div className="text-left">
-                  <p className="text-xs font-bold leading-none uppercase tracking-wide">Iniciar Nova Fiscalização</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1">Carregar dados da equipa em vigor</p>
-               </div>
+        <button
+          onClick={() => navigate('/visitas/nova')}
+          className="w-full flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-all font-bold group shadow-xl shadow-slate-900/10"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-slate-800 text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+              <ShieldCheck className="w-4 h-4" />
             </div>
-            <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
-         </button>
+            <div className="text-left">
+              <p className="text-xs font-bold leading-none uppercase tracking-wide">Iniciar Nova Fiscalização</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-1">Carregar dados da equipa em vigor</p>
+            </div>
+          </div>
+          <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
+        </button>
       </div>
     </div>
   );

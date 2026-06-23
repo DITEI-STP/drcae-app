@@ -117,7 +117,7 @@ export default function FirmaDetail() {
              </div>
           )}
           <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-2xl mb-4 border border-blue-100 shadow-sm">
-            {firma.name.substring(0, 2).toUpperCase()}
+            {(firma.name || '?').substring(0, 2).toUpperCase()}
           </div>
           <h2 className="text-xl font-bold text-slate-900 leading-tight">{firma.name}</h2>
           <div className="mt-2 flex items-center justify-between">

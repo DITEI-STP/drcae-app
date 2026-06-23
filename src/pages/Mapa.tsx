@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, Check, Map } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, Check, Map, WifiOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -26,6 +26,15 @@ export default function Mapa() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [navProgress, setNavProgress] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
 
   const selectedFirma = firmas?.find(f => f.id === selectedFirmaId);
 
@@ -219,16 +228,29 @@ export default function Mapa() {
                {/* Map View */}
                <div className="lg:col-span-2 space-y-4">
                   <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[320px] md:h-[480px]">
-                     <iframe
-                        title={`Mapa - ${selectedFirma.name}`}
-                        width="100%"
-                        height="100%"
-                        className="border-0 rounded-xl"
-                        src={getMapIframeSrc()}
-                        allowFullScreen
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                     ></iframe>
+                     {isOnline ? (
+                       <iframe
+                          title={`Mapa - ${selectedFirma.name}`}
+                          width="100%"
+                          height="100%"
+                          className="border-0 rounded-xl"
+                          src={getMapIframeSrc()}
+                          allowFullScreen
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                       />
+                     ) : (
+                       <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+                         <WifiOff className="w-10 h-10 text-slate-300" />
+                         <p className="font-bold text-slate-600 text-sm">Mapa indisponível offline</p>
+                         <p className="text-xs text-slate-400">O mapa interativo requer ligação à internet.</p>
+                         {locInfo.lat !== 0 && (
+                           <p className="text-xs font-mono bg-slate-100 px-3 py-1.5 rounded-lg text-slate-600">
+                             {locInfo.lat.toFixed(6)}, {locInfo.lng.toFixed(6)}
+                           </p>
+                         )}
+                       </div>
+                     )}
                   </div>
                </div>
 

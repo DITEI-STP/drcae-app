@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#1d4ed8"/>
+  <!-- Shield shape -->
+  <path d="M256 80 L380 130 L380 270 Q380 360 256 430 Q132 360 132 270 L132 130 Z"
+        fill="none" stroke="white" stroke-width="24" stroke-linejoin="round"/>
+  <!-- Checkmark / F letter for Fiscalis -->
+  <text x="256" y="310" font-family="Arial Black, sans-serif" font-size="180"
+        font-weight="900" text-anchor="middle" fill="white">F</text>
+</svg>

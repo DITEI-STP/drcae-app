@@ -6,16 +6,56 @@ import { cn } from '../lib/utils';
 
 const DISTRITOS = ['Água Grande', 'Cantagalo', 'Caué', 'Lembá', 'Lobata', 'Mé-Zóchi', 'RAP'];
 const NACIONALIDADES = ['Santomense', 'Angolana', 'Cabo-verdiana', 'Galega', 'Chinesa', 'Portuguesa', 'Brasileira', 'Outra'];
-const RAMOS = ['Restauração', 'Comércio Misto', 'Alojamento', 'Prestação de Serviço', 'Indústria', 'Outro'];
+const getCachedRamos = (): string[] => {
+  try {
+    const cached = localStorage.getItem('drcae_branches');
+    if (cached) {
+      const parsed = JSON.parse(cached) as { name: string }[];
+      if (parsed.length > 0) {
+        return parsed.map(b => b.name);
+      }
+    }
+  } catch (e) {
+    console.error('[drcae] Falha ao ler ramos de atividade do cache:', e);
+  }
+  return ['Restauração', 'Comércio Misto', 'Alojamento', 'Prestação de Serviço', 'Indústria', 'Outro'];
+};
+
+const RAMOS = getCachedRamos();
 
 export default function NovaFirma() {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = location.state?.returnTo || '/firmas';
 
-  const isEquipeDefinida = localStorage.getItem('drcae_equipe_definida') === 'true';
+  const [equipeNaoDefinida] = useState(() => localStorage.getItem('drcae_equipe_definida') !== 'true');
 
-  if (!isEquipeDefinida) {
+  const [step, setStep] = useState(1);
+
+  const [type, setType] = useState('Revendedor');
+
+  const [logo, setLogo] = useState<string | null>(null);
+  const [nif, setNif] = useState('');
+  const [name, setName] = useState('');
+  const [district, setDistrict] = useState('Água Grande');
+  const [address, setAddress] = useState('');
+  const [contact, setContact] = useState('');
+  const [email, setEmail] = useState('');
+  
+  const [constituicao, setConstituicao] = useState('');
+  const [emissoraLicenca, setEmissoraLicenca] = useState('');
+  const [numLicenca, setNumLicenca] = useState('');
+  const [numAlvara, setNumAlvara] = useState('');
+  
+  const [representant, setRepresentant] = useState('');
+  const [representantCargo, setRepresentantCargo] = useState('');
+  const [representantNacionalidade, setRepresentantNacionalidade] = useState('Santomense');
+  
+  const [atividades, setAtividades] = useState<AtividadeEconomica[]>([]);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (equipeNaoDefinida) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen font-sans">
          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-8 space-y-6 text-center">
@@ -45,31 +85,6 @@ export default function NovaFirma() {
       </div>
     );
   }
-
-  const [step, setStep] = useState(1);
-
-  const [type, setType] = useState('Revendedor');
-
-  const [logo, setLogo] = useState<string | null>(null);
-  const [nif, setNif] = useState('');
-  const [name, setName] = useState('');
-  const [district, setDistrict] = useState('Água Grande');
-  const [address, setAddress] = useState('');
-  const [contact, setContact] = useState('');
-  const [email, setEmail] = useState('');
-  
-  const [constituicao, setConstituicao] = useState('');
-  const [emissoraLicenca, setEmissoraLicenca] = useState('');
-  const [numLicenca, setNumLicenca] = useState('');
-  const [numAlvara, setNumAlvara] = useState('');
-  
-  const [representant, setRepresentant] = useState('');
-  const [representantCargo, setRepresentantCargo] = useState('');
-  const [representantNacionalidade, setRepresentantNacionalidade] = useState('Santomense');
-  
-  const [atividades, setAtividades] = useState<AtividadeEconomica[]>([]);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isInformal = type === 'Informal';
 

@@ -15,12 +15,17 @@ import NovaVisita from './pages/NovaVisita';
 import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
 import Equipe from './pages/Equipe';
-import { db, generateId } from './db/db';
+import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc } from 'lucide-react';
+import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize } from 'lucide-react';
+import * as api from './lib/api';
+import * as crypto from './lib/crypto';
+import { triggerFullSync } from './lib/sync';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
-  const [selectedProfile, setSelectedProfile] = useState<'economy' | 'standard' | 'maximum'>('standard');
+  const [selectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
+    return (localStorage.getItem('drcae_server_sync_profile') as 'economy' | 'standard' | 'maximum') || 'standard';
+  });
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
@@ -105,13 +110,27 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
   const handleClearPinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === '1234') {
-      setPinError('');
-      setShowPinModal(false);
-      setPinInput('');
-      await actuallyClearData();
-    } else {
-      setPinError('PIN de confirmação incorreto! Tente o código padrão: 1234');
+    const nif = localStorage.getItem('drcae_officer_nif') || '';
+    try {
+      setPinError('A validar...');
+      const saltRes = await api.getSalt();
+      const testKey = await crypto.deriveKey(nif, pinInput, saltRes.salt);
+      
+      const prevKey = crypto.getActiveKey();
+      crypto.setActiveKey(testKey);
+      const isCorrect = await db.verifyOfflineKey();
+      crypto.setActiveKey(prevKey);
+
+      if (isCorrect) {
+        setPinError('');
+        setShowPinModal(false);
+        setPinInput('');
+        await actuallyClearData();
+      } else {
+        setPinError('Palavra-passe de confirmação incorreta!');
+      }
+    } catch (err) {
+      setPinError('Erro ao validar palavra-passe.');
     }
   };
 
@@ -190,91 +209,53 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 max-w-4xl mx-auto w-full">
 
-      {/* CARD DE CONFIGURAÇÃO DE PERFIS DE CACHE */}
+      {/* CARD DE PERFIL DE SINCRONIZAÇÃO (atribuído pelo admin) */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="bg-slate-50/50 p-4 border-b border-slate-200 flex items-center gap-2">
           <Layers className="w-5 h-5 text-indigo-600" />
-          <h3 className="font-bold text-slate-800 text-sm">Configuração de Perfis de Cache & Sincronização</h3>
+          <h3 className="font-bold text-slate-800 text-sm">Perfil de Sincronização</h3>
+          <span className="ml-auto text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full uppercase tracking-wider">Atribuído pelo Admin</span>
         </div>
-        
-        <div className="p-5 space-y-6">
+
+        <div className="p-5 space-y-4">
           <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-            Defina o perfil de persistência offline para determinar as regras automáticas de retenção de dados e nível de detalhe local na sua cache.
+            O perfil de sincronização é configurado centralmente pelo administrador do sistema e aplicado automaticamente a este dispositivo.
           </p>
 
-          {/* Perfis Selecionáveis */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Economico */}
-            <div 
-              onClick={() => setSelectedProfile('economy')}
-              className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                selectedProfile === 'economy' 
-                  ? 'border-indigo-600 bg-indigo-50/40 shadow-xs ring-2 ring-indigo-500/20' 
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-xs uppercase tracking-wider text-amber-700">Mínimo / Económico</span>
-                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${selectedProfile === 'economy' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'}`}>
-                    {selectedProfile === 'economy' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                  </div>
-                </div>
-                <p className="text-xs text-slate-600 font-semibold leading-relaxed">Focado na poupança de recursos de armazenamento e dados em rede.</p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400">Taxa de Cache</span>
-                <span className="text-xs font-black text-amber-700">~35% (Leve)</span>
-              </div>
+          {/* Perfil activo - read-only */}
+          <div className={`p-4 rounded-xl border-2 flex items-center gap-4 ${
+            selectedProfile === 'economy'
+              ? 'border-amber-400 bg-amber-50/40'
+              : selectedProfile === 'maximum'
+              ? 'border-emerald-500 bg-emerald-50/40'
+              : 'border-indigo-500 bg-indigo-50/40'
+          }`}>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+              selectedProfile === 'economy' ? 'bg-amber-100' : selectedProfile === 'maximum' ? 'bg-emerald-100' : 'bg-indigo-100'
+            }`}>
+              <Layers className={`w-5 h-5 ${
+                selectedProfile === 'economy' ? 'text-amber-600' : selectedProfile === 'maximum' ? 'text-emerald-600' : 'text-indigo-600'
+              }`} />
             </div>
-
-            {/* Standard */}
-            <div 
-              onClick={() => setSelectedProfile('standard')}
-              className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                selectedProfile === 'standard' 
-                  ? 'border-indigo-600 bg-indigo-50/40 shadow-xs ring-2 ring-indigo-500/20' 
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-xs uppercase tracking-wider text-indigo-800">Padrão / Recomendado</span>
-                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${selectedProfile === 'standard' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'}`}>
-                    {selectedProfile === 'standard' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                  </div>
-                </div>
-                <p className="text-xs text-slate-600 font-semibold leading-relaxed">Equilíbrio recomendado para fiscalizações no terreno sem qualquer atrito.</p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400">Taxa de Cache</span>
-                <span className="text-xs font-black text-indigo-800">~70% (Equilibrado)</span>
-              </div>
+            <div className="flex-1">
+              <p className={`font-bold text-sm ${
+                selectedProfile === 'economy' ? 'text-amber-800' : selectedProfile === 'maximum' ? 'text-emerald-800' : 'text-indigo-800'
+              }`}>
+                {selectedProfile === 'economy' ? 'Mínimo / Económico' : selectedProfile === 'maximum' ? 'Offline Total / Máximo' : 'Padrão / Recomendado'}
+              </p>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {selectedProfile === 'economy'
+                  ? 'Poupança de dados — histórico de 15 dias'
+                  : selectedProfile === 'maximum'
+                  ? 'Histórico completo — acesso offline total'
+                  : 'Equilíbrio recomendado — histórico de 60 dias'}
+              </p>
             </div>
-
-            {/* Maximum */}
-            <div 
-              onClick={() => setSelectedProfile('maximum')}
-              className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                selectedProfile === 'maximum' 
-                  ? 'border-indigo-600 bg-indigo-50/40 shadow-xs ring-2 ring-indigo-500/20' 
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-xs uppercase tracking-wider text-emerald-800">Offline Total / Máximo</span>
-                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${selectedProfile === 'maximum' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'}`}>
-                    {selectedProfile === 'maximum' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                  </div>
-                </div>
-                <p className="text-xs text-slate-600 font-semibold leading-relaxed">Adequado para áreas remotas com impossibilidade de conexão temporária.</p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400">Taxa de Cache</span>
-                <span className="text-xs font-black text-emerald-800">100% (Histórico Total)</span>
-              </div>
-            </div>
+            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
+              selectedProfile === 'economy' ? 'bg-amber-100 text-amber-700' : selectedProfile === 'maximum' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+            }`}>
+              {selectedProfile === 'economy' ? '~35%' : selectedProfile === 'maximum' ? '100%' : '~70%'}
+            </span>
           </div>
 
           {/* Gráfico do nível de dados cacheado */}
@@ -540,20 +521,19 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                      </div>
                      <h3 className="font-bold text-lg text-slate-900">Confirmação de Segurança</h3>
                      <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                       A limpeza de cache elimina os dados locais já submetidos. Introduza o seu **PIN de Inspetor** para prosseguir.
+                       A limpeza de cache elimina os dados locais já submetidos. Introduza a sua palavra-passe para prosseguir.
                      </p>
                    </div>
 
                    <form onSubmit={handleClearPinSubmit} className="space-y-4">
                      <div className="space-y-1">
-                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block pl-1">Código PIN do Inspetor (Padrão: 1234)</label>
+                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block pl-1">Palavra-passe do Inspetor</label>
                        <input
                          type="password"
-                         placeholder="••••"
-                         maxLength={4}
+                         placeholder="Digite a palavra-passe"
                          value={pinInput}
                          onChange={e => {
-                           setPinInput(e.target.value.replace(/\D/g, ''));
+                           setPinInput(e.target.value);
                            setPinError('');
                          }}
                          className="w-full text-center tracking-widest text-lg font-black bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 rounded-xl p-3 text-slate-800"
@@ -576,10 +556,10 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                        </button>
                        <button
                          type="submit"
-                         disabled={pinInput.length < 4}
+                         disabled={pinInput.length === 0}
                          className="flex-1 py-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:bg-slate-400 rounded-xl transition-colors shadow-sm"
                        >
-                         Confirmar PIN
+                         Confirmar
                        </button>
                      </div>
                    </form>
@@ -599,7 +579,14 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                </div>
                <div>
                   <h3 className="font-bold text-gray-900">Sessão</h3>
-                  <p className="text-xs text-gray-500">Agente Carvalho</p>
+                  <p className="text-xs text-gray-500">
+                    {(() => {
+                      try {
+                        const info = JSON.parse(localStorage.getItem('drcae_officer_info') || 'null');
+                        return info?.name ?? 'Agente';
+                      } catch { return 'Agente'; }
+                    })()}
+                  </p>
                </div>
             </div>
             <button onClick={onLogout} className="text-sm font-bold text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
@@ -612,27 +599,154 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 }
 
 function LoginPage({ onLogin }: { onLogin: () => void }) {
-  const [nif, setNif] = useState('');
+  const [nif, setNif] = useState(() => localStorage.getItem('drcae_officer_nif') || '');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    const hasFullscreenSupport = typeof document.documentElement.requestFullscreen === 'function';
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.matchMedia('(display-mode: minimal-ui)').matches ||
+                         (window.navigator as any).standalone;
+    const isWebview = window.navigator.userAgent.includes('DrcaeWebview');
+
+    setShowFullscreenBtn(hasFullscreenSupport && !isStandalone && !isWebview);
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error('[drcae] Erro ao alternar ecrã inteiro:', err);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (nif && password) {
-      onLogin();
+    setError('');
+    setLoading(true);
+
+    try {
+      const isOnline = navigator.onLine;
+
+      // 1. Obter salt — online: pedir ao servidor e cachear; offline: usar cache
+      let salt: string;
+      if (isOnline) {
+        try {
+          const saltRes = await api.getSalt();
+          salt = saltRes.salt;
+          localStorage.setItem('drcae_cached_salt', salt);
+        } catch {
+          // Rede caiu mesmo com onLine=true — usar cache se disponível
+          const cached = localStorage.getItem('drcae_cached_salt');
+          if (!cached) {
+            setError('Sem ligação ao servidor e sem cache offline. Conecte-se à rede na primeira utilização.');
+            return;
+          }
+          salt = cached;
+        }
+      } else {
+        const cached = localStorage.getItem('drcae_cached_salt');
+        if (!cached) {
+          setError('Sem internet e sem cache de acesso offline. Conecte-se à rede na primeira utilização.');
+          return;
+        }
+        salt = cached;
+      }
+
+      // 2. Derivar chave local (sempre local, nunca vai à rede)
+      const derivedKey = await crypto.deriveKey(nif, password, salt);
+      crypto.setActiveKey(derivedKey);
+
+      if (isOnline) {
+        try {
+          // 3. Login online
+          await api.login(nif, password);
+          // 4. Gravar canary encriptado para autenticação offline futura
+          await db.setupOfflineCanary();
+          localStorage.setItem('drcae_officer_nif', nif);
+          onLogin();
+        } catch (onlineErr: any) {
+          const msg = onlineErr.message || '';
+          const isNetworkErr = /fetch|network|failed to fetch|networkerror/i.test(msg);
+          if (isNetworkErr) {
+            // Rede caiu no meio do login — tentar offline com canary
+            const ok = await db.verifyOfflineKey();
+            if (ok) {
+              localStorage.setItem('drcae_officer_nif', nif);
+              onLogin();
+            } else {
+              setError('Sem ligação e sem credenciais offline gravadas. Ligue-se à rede e tente novamente.');
+              crypto.setActiveKey(null);
+            }
+          } else {
+            setError(msg || 'Credenciais inválidas.');
+            crypto.setActiveKey(null);
+          }
+        }
+      } else {
+        // Modo 100% offline — verificar canary encriptado local
+        const ok = await db.verifyOfflineKey();
+        if (ok) {
+          localStorage.setItem('drcae_officer_nif', nif);
+          onLogin();
+        } else {
+          setError('Palavra-passe incorreta ou sem cache offline ativa para este agente.');
+          crypto.setActiveKey(null);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao processar autenticação.');
+      crypto.setActiveKey(null);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-[#F5F7FA] p-4">
-      <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-[#F5F7FA] p-4 relative">
+      {showFullscreenBtn && (
+        <button
+          onClick={toggleFullscreen}
+          className="absolute top-4 right-4 p-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-800 transition-colors shadow-sm cursor-pointer z-50"
+          title={isFullscreen ? 'Sair do Ecrã Inteiro' : 'Ecrã Inteiro'}
+        >
+          {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+        </button>
+      )}
+      <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
             <ShieldCheck className="w-8 h-8 text-white" />
           </div>
         </div>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
-        <p className="text-sm text-center text-slate-500 mb-8 font-medium">Faça login para aceder à plataforma.</p>
+        <p className="text-sm text-center text-slate-500 mb-6 font-medium">
+          {navigator.onLine ? 'Conectado à Internet' : 'Modo Offline - Acesso Criptografado'}
+        </p>
         
+        {error && (
+          <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-600 text-xs font-semibold rounded-xl text-center">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">NIF do Agente</label>
@@ -643,6 +757,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
               onChange={(e) => setNif(e.target.value)}
               className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium transition-all"
               placeholder="Ex: 123456789"
+              disabled={loading}
             />
           </div>
           <div className="space-y-1.5 mb-6">
@@ -654,13 +769,15 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium transition-all"
               placeholder="••••••••"
+              disabled={loading}
             />
           </div>
           <button 
             type="submit"
-            className="w-full py-3.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors uppercase tracking-wide mt-4"
+            disabled={loading}
+            className="w-full py-3.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors uppercase tracking-wide mt-4 disabled:opacity-50"
           >
-            Iniciar Sessão
+            {loading ? 'A processar...' : 'Iniciar Sessão'}
           </button>
         </form>
       </div>
@@ -668,155 +785,249 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('isAuthenticated') === 'true';
-  });
+function AwaitingApprovalScreen({ onLogout }: { onLogout: () => void }) {
+  return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 text-center space-y-6">
+        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto">
+          <ShieldCheck className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">Dispositivo Pendente</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+            Este dispositivo aguarda aprovação pelo administrador no painel de <strong>Gestão de Sincronização Móvel</strong>. Contacte o seu supervisor.
+          </p>
+        </div>
+        <button
+          onClick={onLogout}
+          className="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+        >
+          Terminar Sessão
+        </button>
+      </div>
+    </div>
+  );
+}
 
-  const handleLogin = () => {
-    localStorage.setItem('isAuthenticated', 'true');
+// Ecrã de acesso bloqueado — acesso directo sem sessão webview
+function WebviewRequired({ onDevConnect }: { onDevConnect?: (sig: string) => void }) {
+  const isDevMode = (import.meta as any).env?.VITE_WEBVIEW_DEV_MODE === 'true';
+  const [sig, setSig] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const handleDevConnect = async () => {
+    if (!sig.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      // Simula o fluxo do webview: launch → handshake → cookie __wvs
+      const launchRes = await fetch('/api/app/auth/webview-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Webview-Signature': sig.trim() },
+        credentials: 'include',
+      });
+      if (!launchRes.ok) throw new Error(`Erro ${launchRes.status} — assinatura inválida ou dispositivo não aprovado.`);
+      const { launch_token } = await launchRes.json();
+
+      const handshakeRes = await fetch('/api/app/auth/webview-handshake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ launch_token }),
+        credentials: 'include',
+      });
+      if (!handshakeRes.ok) throw new Error(`Erro ${handshakeRes.status} — handshake falhou.`);
+
+      onDevConnect?.(sig.trim());
+    } catch (err: any) {
+      setError(err.message || 'Falha ao conectar.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
+      <div className="text-center px-8 py-12 max-w-sm w-full">
+        <Smartphone className="w-14 h-14 text-slate-600 mx-auto mb-4" />
+        <h1 className="text-2xl font-black text-white tracking-widest mb-2">DRCAE</h1>
+
+        {isDevMode ? (
+          <div className="mt-6 space-y-4 text-left">
+            <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl px-4 py-3">
+              <p className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Modo Desenvolvimento</p>
+              <p className="text-amber-300/80 text-xs">Cole a <code className="font-mono bg-amber-900/40 px-1 rounded">webview_signature</code> do dispositivo para aceder sem a app nativa.</p>
+            </div>
+
+            <textarea
+              className="w-full bg-slate-800 border border-slate-600 rounded-xl p-3 text-slate-200 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={4}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              value={sig}
+              onChange={e => { setSig(e.target.value); setError(''); }}
+            />
+
+            {error && <p className="text-red-400 text-xs">{error}</p>}
+
+            <button
+              onClick={handleDevConnect}
+              disabled={loading || !sig.trim()}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors"
+            >
+              {loading ? 'A conectar...' : 'Conectar com Assinatura'}
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="text-slate-400 text-sm leading-relaxed mt-4">
+              Esta aplicação só está disponível através da app <strong className="text-slate-300">DRCAE</strong> instalada no dispositivo.
+            </p>
+            <p className="text-slate-600 text-xs mt-4">Acesso directo via browser não é permitido.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [devicePending, setDevicePending] = useState(false);
+  // null = a verificar; true = sessão válida; false = sem sessão webview
+  const [webviewReady, setWebviewReady] = useState<boolean | null>(null);
+
+  // Handshake webview e restauração de sessão
+  useEffect(() => {
+    async function initSession() {
+      // 1. Restaurar chave criptográfica se houver no sessionStorage
+      const savedKeyHex = sessionStorage.getItem('drcae_session_key');
+      if (savedKeyHex) {
+        try {
+          await crypto.restoreSessionKey(savedKeyHex);
+          setIsAuthenticated(true);
+        } catch (err) {
+          console.error('[drcae] Falha ao restaurar chave criptográfica:', err);
+          sessionStorage.removeItem('drcae_session_key');
+        }
+      }
+
+      // 2. Handshake webview — troca o ?wvt= pelo cookie __wvs
+      const params = new URLSearchParams(window.location.search);
+      const wvt = params.get('wvt');
+      if (wvt) {
+        try {
+          await fetch('/api/app/auth/webview-handshake', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ launch_token: wvt }),
+            credentials: 'include',
+          });
+          // Remove ?wvt= da URL sem recarregar
+          params.delete('wvt');
+          const newSearch = params.toString();
+          window.history.replaceState({}, '', window.location.pathname + (newSearch ? '?' + newSearch : ''));
+          setWebviewReady(true);
+        } catch {
+          setWebviewReady(false);
+        }
+      } else {
+        // Sem ?wvt= — pode ter cookie __wvs válido (re-entradas após handshake já feito)
+        // O NGINX valida; se chegou aqui, o cookie já é válido
+        setWebviewReady(true);
+      }
+    }
+    initSession();
+  }, []);
+
+  // Escutar expiração de token
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setIsAuthenticated(false);
+      crypto.setActiveKey(null);
+      alert('A sua sessão expirou. Por favor, inicie sessão novamente.');
+    };
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+  }, []);
+
+  // Escutar dispositivo pendente de aprovação
+  useEffect(() => {
+    const handler = () => setDevicePending(true);
+    window.addEventListener('device-pending-approval', handler);
+    return () => window.removeEventListener('device-pending-approval', handler);
+  }, []);
+
+  // Sync automático quando volta a ficar online
+  useEffect(() => {
+    const handleOnline = async () => {
+      if (isAuthenticated) {
+        console.log('Online detectado! Iniciando sync automático...');
+        try {
+          await triggerFullSync();
+          console.log('Sync automático concluído com sucesso!');
+        } catch (err) {
+          console.error('Falha ao rodar sync automático:', err);
+        }
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [isAuthenticated]);
+
+  const handleLogin = async () => {
     setIsAuthenticated(true);
+    if (navigator.onLine) {
+      try {
+        const assetsData = await api.getAssets();
+        localStorage.setItem('drcae_officers_list', JSON.stringify(assetsData.officers || []));
+        localStorage.setItem('drcae_assets', JSON.stringify(assetsData.assets || []));
+        localStorage.setItem('drcae_infractions', JSON.stringify(assetsData.infractions || []));
+        localStorage.setItem('drcae_branches', JSON.stringify(assetsData.branches || []));
+      } catch (err) {
+        console.warn('[drcae] Falha ao obter dados de referência; a usar cache anterior.', err);
+      }
+      try {
+        await triggerFullSync();
+      } catch (err) {
+        console.warn('[drcae] Sync inicial falhou; dados locais mantidos.', err);
+      }
+    }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
+    api.logout().catch(() => {});
+    crypto.setActiveKey(null);
     setIsAuthenticated(false);
+    setDevicePending(false);
   };
 
-  useEffect(() => {
-    const seedData = async () => {
-      const count = await db.firmas.count();
-      if (count === 0) {
-        console.log("Seeding database...");
-        
-        const firma1Id = generateId();
-        const firma2Id = generateId();
-        const firma3Id = generateId();
-        const firma4Id = generateId();
+  if (webviewReady === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+          <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">A iniciar sessão...</span>
+        </div>
+      </div>
+    );
+  }
 
-        await db.firmas.bulkAdd([
-          { 
-            id: firma1Id, 
-            nif: '517562696', 
-            name: '(CAFÉ PARK) CENTRO DE ANIMAÇÃO, LDA', 
-            district: 'Água Grande', 
-            address: 'Parque Popular', 
-            contact: '2225822', 
-            email: 'cafeparklda@gmail.com', 
-            type: 'Importador', 
-            representant: 'Miguel Oliveira', 
-            representantCargo: 'Gerente',
-            synced: true,
-            constituicao: 'Sociedade por Quotas',
-            emissoraLicenca: 'Câmara Municipal',
-            numLicenca: '123/2019',
-            numAlvara: '456/2019',
-            atividades: [
-              { id: generateId(), ramo: 'Restauração', atividade: 'Café', local: 'Parque Popular' }
-            ]
-          },
-          { 
-            id: firma2Id, 
-            nif: '839210344', 
-            name: 'SANTOS ENI 930', 
-            district: 'Cantagalo', 
-            address: 'Santana', 
-            contact: '+239 987654321', 
-            email: 'contato@santos.st', 
-            type: 'Revendedor', 
-            representant: 'João Santos', 
-            synced: true,
-            atividades: [
-              { id: generateId(), ramo: 'Comércio Misto', atividade: 'Retalho', local: 'Santana' }
-            ]
-          },
-          { 
-            id: firma3Id, 
-            nif: '109000001', 
-            name: '2 P F, LIMITADA', 
-            district: 'Água Grande', 
-            address: 'Centro', 
-            contact: '', 
-            email: '', 
-            type: 'Revendedor', 
-            representant: 'Pedro Fernandes', 
-            synced: true 
-          },
-          { 
-            id: firma4Id, 
-            nif: 'SEM NIF', 
-            name: 'MERCADO MUNICIPAL BACA', 
-            district: 'Mé-Zóchi', 
-            address: 'Trindade', 
-            contact: '', 
-            email: '', 
-            type: 'Informal', 
-            representant: 'Maria Silva', 
-            synced: true 
-          }
-        ]);
-
-        const visita1Id = generateId();
-        const visita2Id = generateId();
-        const visita3Id = generateId();
-
-        await db.visitas.bulkAdd([
-          {
-            id: visita1Id,
-            firmaId: firma1Id,
-            firmaName: '(CAFÉ PARK) CENTRO DE ANIMAÇÃO, LDA',
-            date: '2023-10-12',
-            time: '14:30',
-            technicians: ['Agente Carvalho', 'Agente Silva'],
-            status: 'Infrações',
-            atividadeEconomica: 'Café',
-            synced: true,
-            notes: 'Encontradas várias irregularidades sanitárias na cozinha e armazenamento de produtos.',
-            geolocation: { lat: 0.3392, lng: 6.7314 }
-          },
-          {
-            id: visita2Id,
-            firmaId: firma2Id,
-            firmaName: 'SANTOS ENI 930',
-            date: '2024-01-04',
-            time: '10:15',
-            technicians: ['Agente Carvalho'],
-            status: 'Conforme',
-            synced: true,
-            notes: 'Estabelecimento em perfeitas condições de higiene. Licenciamento regularizado.'
-          },
-          {
-            id: visita3Id,
-            firmaId: firma1Id,
-            firmaName: '(CAFÉ PARK) CENTRO DE ANIMAÇÃO, LDA',
-            date: '2024-03-20',
-            time: '09:00',
-            technicians: ['Agente Martins'],
-            status: 'Infrações',
-            synced: true,
-            notes: 'Reincidência em algumas infrações. Produtos fora de prazo.'
-          }
-        ]);
-
-        await db.infracoes.bulkAdd([
-          { id: generateId(), visitaId: visita1Id, type: 'Higiene e Segurança Alimentar', severity: 'Alta', synced: true },
-          { id: generateId(), visitaId: visita1Id, type: 'Ausência de Tabela de Preços', severity: 'Baixa', synced: true },
-          { id: generateId(), visitaId: visita3Id, type: 'Higiene e Segurança Alimentar', severity: 'Alta', synced: true },
-          { id: generateId(), visitaId: visita3Id, type: 'Produtos Fora de Prazo', severity: 'Crítica', synced: true }
-        ]);
-      }
-    };
-    seedData();
-  }, []);
+  if (!webviewReady) {
+    return <WebviewRequired onDevConnect={() => setWebviewReady(true)} />;
+  }
 
   if (!isAuthenticated) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
+  if (devicePending) {
+    return <AwaitingApprovalScreen onLogout={handleLogout} />;
+  }
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/app">
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/" element={<Layout onLogout={handleLogout} />}>
           <Route index element={<Dashboard />} />
           
           <Route path="firmas">
