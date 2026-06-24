@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Centrifuge } from 'centrifuge';
 import * as api from './api';
 import { registerAppPush } from './push';
+import { getSyncSnapshot } from './syncState';
 
 type RealtimeEvent = {
   id: string;
@@ -22,7 +23,6 @@ const PENDING_SYNC_KEY = 'drcae_realtime_pending_sync';
 export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppRealtimeOptions) {
   const syncRef = useRef(onSyncRequested);
   const debounceRef = useRef<number | null>(null);
-  const runningRef = useRef(false);
 
   useEffect(() => {
     syncRef.current = onSyncRequested;
@@ -30,15 +30,13 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
 
   useEffect(() => {
     const runPending = () => {
-      if (!enabled || !navigator.onLine || runningRef.current) return;
+      const state = getSyncSnapshot();
+      const isSyncing = state.phase === 'pushing' || state.phase === 'pulling';
+      if (!enabled || !navigator.onLine || isSyncing) return;
       if (localStorage.getItem(PENDING_SYNC_KEY) !== '1') return;
-      runningRef.current = true;
       Promise.resolve(syncRef.current())
         .then(() => localStorage.removeItem(PENDING_SYNC_KEY))
-        .catch(() => localStorage.setItem(PENDING_SYNC_KEY, '1'))
-        .finally(() => {
-          runningRef.current = false;
-        });
+        .catch(() => localStorage.setItem(PENDING_SYNC_KEY, '1'));
     };
 
     const handleMessage = (event: MessageEvent) => {
@@ -84,14 +82,12 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
       localStorage.setItem(PENDING_SYNC_KEY, '1');
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       debounceRef.current = window.setTimeout(() => {
-        if (!navigator.onLine || runningRef.current) return;
-        runningRef.current = true;
+        const state = getSyncSnapshot();
+        const isSyncing = state.phase === 'pushing' || state.phase === 'pulling';
+        if (!navigator.onLine || isSyncing) return;
         Promise.resolve(syncRef.current())
           .then(() => localStorage.removeItem(PENDING_SYNC_KEY))
-          .catch(() => localStorage.setItem(PENDING_SYNC_KEY, '1'))
-          .finally(() => {
-            runningRef.current = false;
-          });
+          .catch(() => localStorage.setItem(PENDING_SYNC_KEY, '1'));
       }, 900);
     };
 

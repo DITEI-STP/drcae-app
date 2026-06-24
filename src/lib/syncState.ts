@@ -51,6 +51,7 @@ const DEFAULT: SyncSnapshot = {
 
 let _state: SyncSnapshot = { ...DEFAULT };
 const _listeners = new Set<(s: SyncSnapshot) => void>();
+let _notifyScheduled = false;
 
 export function getSyncSnapshot(): SyncSnapshot {
   return _state;
@@ -58,7 +59,13 @@ export function getSyncSnapshot(): SyncSnapshot {
 
 export function patchSyncState(patch: Partial<SyncSnapshot>): void {
   _state = { ..._state, ...patch };
-  _listeners.forEach(fn => fn(_state));
+  if (!_notifyScheduled) {
+    _notifyScheduled = true;
+    queueMicrotask(() => {
+      _notifyScheduled = false;
+      _listeners.forEach(fn => fn(_state));
+    });
+  }
 }
 
 export function resetSyncState(): void {

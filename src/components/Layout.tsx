@@ -58,7 +58,11 @@ export default function Layout({ onLogout }: LayoutProps) {
 
   const navigate = useNavigate();
 
+  const syncRunningRef = useRef(false);
+
   const syncData = useCallback(async () => {
+    if (syncRunningRef.current) return;
+    syncRunningRef.current = true;
     setIsSyncing(true);
     setSyncErrorMsg(null);
     setSyncNeedsAuth(false);
@@ -76,6 +80,7 @@ export default function Layout({ onLogout }: LayoutProps) {
       console.error('[drcae] Falha ao sincronizar:', err);
     } finally {
       setIsSyncing(false);
+      syncRunningRef.current = false;
     }
   }, []);
 
@@ -96,9 +101,25 @@ export default function Layout({ onLogout }: LayoutProps) {
     };
   }, []);
 
+  // ── Sync ao ficar online ──────────────────────────────────────────────
+  // Dispara apenas quando a transição online→offline→online ocorre.
+  // NÃO depende de unsyncedCount — evita o loop de re-renders.
   useEffect(() => {
-    if (isOnline && unsyncedCount > 0 && !isSyncing) syncData();
-  }, [isOnline, unsyncedCount, isSyncing, syncData]);
+    if (isOnline) {
+      syncData();
+    }
+  }, [isOnline, syncData]);
+
+  // ── Sync periódico — fallback se Centrifugo falhar ────────────────────
+  // Intervalo de 15 minutos. Não corre se já há sync em curso.
+  useEffect(() => {
+    if (!isOnline) return;
+    const FIFTEEN_MIN = 15 * 60 * 1000;
+    const id = setInterval(() => {
+      syncData();
+    }, FIFTEEN_MIN);
+    return () => clearInterval(id);
+  }, [isOnline, syncData]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {

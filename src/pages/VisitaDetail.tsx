@@ -145,7 +145,7 @@ export default function VisitaDetail() {
                   : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-emerald-100 dark:bg-emerald-955/20 text-emerald-800 dark:text-emerald-450">Confirmada</span>;
               }
               const age = Date.now() - (visita.createdAt || 0);
-              return age > 5 * 60 * 1000
+              return age > 60 * 60 * 1000
                 ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 dark:bg-amber-955/20 text-amber-800 dark:text-amber-400">Pendente</span>
                 : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-blue-100 dark:bg-blue-955/20 text-blue-700 dark:text-blue-450">Sincronizando…</span>;
             })()}

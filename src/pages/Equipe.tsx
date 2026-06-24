@@ -12,6 +12,34 @@ interface OfficerOption {
   district?: string;
 }
 
+// Helper determinístico para iniciais e gradientes dos membros da equipa
+const getMemberAvatar = (name: string) => {
+  const cleanName = (name || 'Técnico').trim();
+  const initials = cleanName
+    .split(/\s+/)
+    .filter(w => w)
+    .slice(0, 2)
+    .map(w => w[0].toUpperCase())
+    .join('');
+
+  let hash = 0;
+  for (let i = 0; i < cleanName.length; i++) {
+    hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const gradients = [
+    'from-blue-500 to-indigo-600 dark:from-blue-600 dark:to-indigo-750',
+    'from-purple-500 to-pink-500 dark:from-purple-600 dark:to-pink-700',
+    'from-teal-500 to-emerald-600 dark:from-teal-600 dark:to-emerald-700',
+    'from-orange-500 to-amber-600 dark:from-orange-600 dark:to-amber-700',
+    'from-violet-500 to-purple-600 dark:from-violet-600 dark:to-purple-750',
+    'from-rose-500 to-pink-600 dark:from-rose-650 dark:to-pink-750',
+    'from-sky-500 to-blue-600 dark:from-sky-600 dark:to-blue-750'
+  ];
+  const gradientIndex = Math.abs(hash) % gradients.length;
+  return { initials: initials || 'T', gradient: gradients[gradientIndex] };
+};
+
 export default function Equipe() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<string[]>([]);
@@ -96,19 +124,19 @@ export default function Equipe() {
   const todayFormatted = format(new Date(), "eeee, d 'de' MMMM 'de' yyyy", { locale: ptBR });
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-[#F8FAFC] dark:bg-slate-950 pb-24">
       {/* Header Info */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800/80">
         <div className="flex items-center gap-3 mb-3">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Equipa Diária</h2>
-            <p className="text-xs text-slate-500 font-medium">Configure a equipa de agentes de serviço para o dia de hoje.</p>
+            <h2 className="text-xl font-bold text-slate-850 dark:text-slate-100">Equipa Diária</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Configure a equipa de agentes de serviço para o dia de hoje.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold">
+        <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 dark:bg-slate-955 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-semibold w-fit">
           <Calendar className="w-4 h-4 text-indigo-500" />
           <span className="capitalize">{todayFormatted}</span>
         </div>
@@ -116,59 +144,91 @@ export default function Equipe() {
 
       {/* Status callout banner */}
       {equipeDefinida ? (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex gap-3 text-xs items-center animate-in fade-in duration-300">
-          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
+        <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 rounded-2xl p-4 flex gap-3 text-xs items-center animate-in fade-in duration-300">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-450">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div className="space-y-0.5 flex-1 text-left">
-            <p className="font-bold text-emerald-950">Ambiente Validado e Habilitado</p>
-            <p className="text-emerald-700 font-medium leading-tight">
+            <p className="font-bold text-emerald-950 dark:text-emerald-200">Ambiente Validado e Habilitado</p>
+            <p className="text-emerald-700 dark:text-emerald-400 font-medium leading-tight">
               A equipa diária está confirmada juridicamente. O registo de fiscalizações e cadastro de operadores está ativo.
             </p>
           </div>
-          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full uppercase tracking-wider">Ativo</span>
+          <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400 px-2.5 py-1 rounded-full uppercase tracking-wider">Ativo</span>
         </div>
       ) : (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex gap-3 text-xs items-center animate-pulse">
-          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-900/30 rounded-2xl p-4 flex gap-3 text-xs items-center animate-pulse">
+          <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-950/40 flex items-center justify-center shrink-0 text-amber-700 dark:text-amber-450">
             <AlertTriangle className="w-5 h-5" />
           </div>
           <div className="space-y-0.5 flex-1 text-left">
-            <p className="font-bold text-amber-950">Definição Extraordinária Pendente</p>
-            <p className="text-amber-800 font-medium leading-tight text-left">
+            <p className="font-bold text-amber-950 dark:text-amber-200">Definição Extraordinária Pendente</p>
+            <p className="text-amber-800 dark:text-amber-400 font-medium leading-tight text-left">
               Por norma jurídica da DRCAE, configure a equipa abaixo e clique em "Confirmar & Gravar" para desbloquear as funcionalidades de registo.
             </p>
           </div>
-          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full uppercase tracking-wider">Bloqueado</span>
+          <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-400 px-2.5 py-1 rounded-full uppercase tracking-wider">Bloqueado</span>
         </div>
       )}
 
       {/* Seleção rápida de agents reais (se disponíveis) */}
       {officersList.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Agentes Disponíveis (do Sistema)</span>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-100 dark:border-slate-850/80">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block font-mono">Agentes Disponíveis (do Sistema)</span>
           </div>
-          <div className="p-4 flex flex-wrap gap-2">
+          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {officersList.map((officer) => {
               const selected = members.includes(officer.name);
+              const { initials, gradient } = getMemberAvatar(officer.name);
               return (
                 <button
                   key={officer.id}
                   type="button"
                   onClick={() => handleToggleOfficer(officer)}
                   className={cn(
-                    'flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all',
+                    'relative p-4 rounded-2xl border flex flex-col items-center text-center transition-all duration-300 hover:scale-[1.03] hover:shadow-md cursor-pointer group',
                     selected
-                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
+                      ? 'bg-indigo-50/50 dark:bg-indigo-950/15 border-indigo-650 dark:border-indigo-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-900/50 text-slate-700 dark:text-slate-300'
                   )}
                 >
-                  {selected && <Check className="w-3.5 h-3.5" />}
-                  {officer.name}
-                  {officer.district && (
-                    <span className={cn('text-[10px] font-medium', selected ? 'text-indigo-200' : 'text-slate-400')}>
-                      · {officer.district}
+                  {/* Selection Check Circle */}
+                  <div className={cn(
+                    'absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center transition-all duration-200',
+                    selected
+                      ? 'bg-indigo-650 dark:bg-indigo-500 text-white scale-100'
+                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-transparent scale-90 group-hover:scale-100 group-hover:border-slate-300 dark:group-hover:border-slate-650'
+                  )}>
+                    <Check className={cn('w-3 h-3 transition-transform', selected ? 'scale-100' : 'scale-0')} />
+                  </div>
+
+                  {/* Avatar Circular with Initial & Gradient */}
+                  <div className={cn(
+                    'w-14 h-14 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md bg-gradient-to-br transition-transform duration-300 group-hover:scale-105 mb-3',
+                    gradient
+                  )}>
+                    {initials}
+                  </div>
+
+                  {/* Officer Name */}
+                  <p className="text-xs font-extrabold text-slate-850 dark:text-slate-100 line-clamp-2 w-full leading-tight mb-1 min-h-[2rem] flex items-center justify-center">
+                    {officer.name}
+                  </p>
+
+                  {/* Officer District Badge */}
+                  {officer.district ? (
+                    <span className={cn(
+                      'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors mt-0.5',
+                      selected
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-550 dark:text-slate-400'
+                    )}>
+                      {officer.district}
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-105 text-slate-400 mt-0.5 invisible">
+                      -
                     </span>
                   )}
                 </button>
@@ -179,61 +239,67 @@ export default function Equipe() {
       )}
 
       {/* Main configuration Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Agentes Escalados Hoje</span>
-          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs">{members.length} {members.length === 1 ? 'Agente' : 'Agentes'}</span>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
+        <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-100 dark:border-slate-850/80 flex items-center justify-between">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block font-mono">Agentes Escalados Hoje</span>
+          <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-bold rounded-lg text-xs">{members.length} {members.length === 1 ? 'Agente' : 'Agentes'}</span>
         </div>
 
         {/* Members List */}
         <div className="p-4 space-y-2.5">
-          {members.map((member, idx) => (
-            <div
-              key={member}
-              className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition-all group scale-100"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-bold font-mono">
-                  {idx + 1}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">{member}</p>
-                  <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest mt-0.5">Oficial de Fiscalização</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveMember(member)}
-                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                title="Sair da Equipa"
+          {members.map((member, idx) => {
+            const { initials, gradient } = getMemberAvatar(member);
+            return (
+              <div
+                key={member}
+                className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100/85 dark:hover:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 transition-all group scale-100"
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-black bg-gradient-to-br shadow-sm",
+                    gradient
+                  )}>
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-850 dark:text-slate-100">{member}</p>
+                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-widest mt-0.5">Oficial de Fiscalização</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveMember(member)}
+                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all cursor-pointer"
+                  title="Sair da Equipa"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
 
           {members.length === 0 && (
-            <div className="text-center py-6 text-slate-400 text-xs">
+            <div className="text-center py-6 text-slate-400 dark:text-slate-500 text-xs">
               Nenhum agente escalado para hoje. {officersList.length > 0 ? 'Selecione acima ou adicione manualmente.' : 'Adicione um oficial abaixo.'}
             </div>
           )}
         </div>
 
         {/* Add new member form (manual / fallback offline) */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-955/50">
           <form onSubmit={handleAddMember} className="space-y-3">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Agente Manualmente</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest block pl-1">Adicionar Agente Manualmente</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 placeholder="Exemplo: Agente Silva, Inspetor Carvalho"
                 value={newMemberName}
                 onChange={e => setNewMemberName(e.target.value)}
-                className="flex-1 p-3 text-xs bg-white border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold rounded-xl placeholder-slate-400"
+                className="flex-1 p-3 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-805 dark:text-slate-100 font-semibold rounded-xl placeholder-slate-400 dark:placeholder-slate-550"
               />
               <button
                 type="submit"
-                className="px-4 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-100"
+                className="px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Adicionar
@@ -243,11 +309,11 @@ export default function Equipe() {
         </div>
 
         {/* Explicit confirmation button */}
-        <div className="p-4 border-t border-slate-100 bg-indigo-50/20 flex justify-end">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-850 bg-indigo-50/20 dark:bg-indigo-950/10 flex justify-end">
           <button
             type="button"
             onClick={handleConfirmarEquipeDirecto}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 uppercase tracking-widest"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 dark:shadow-none uppercase tracking-widest cursor-pointer"
           >
             <ShieldCheck className="w-4 h-4 text-white" />
             Confirmar & Gravar Composição de Equipa
@@ -256,11 +322,11 @@ export default function Equipe() {
       </div>
 
       {/* Info Notice card */}
-      <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 flex gap-3 text-xs">
-        <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+      <div className="bg-amber-50/10 dark:bg-amber-950/10 border border-amber-200/60 dark:border-amber-900/30 rounded-2xl p-4 flex gap-3 text-xs">
+        <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-bold text-amber-800">Sincronização & Processo</p>
-          <p className="text-amber-700 font-medium leading-relaxed">
+          <p className="font-bold text-amber-850 dark:text-amber-300">Sincronização & Processo</p>
+          <p className="text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
             Esta equipa configurada servirá de matriz para todas as fiscalizações do dia. No momento de registar cada visita, poderá validar de imediato e realizar qualquer retificação pontual necessária.
           </p>
         </div>
@@ -270,7 +336,7 @@ export default function Equipe() {
       {showSavedToast && (
         <div className={cn(
           "fixed bottom-24 left-1/2 -translate-x-1/2 text-white px-4 py-2.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 z-50",
-          toastError ? "bg-red-600" : "bg-slate-900"
+          toastError ? "bg-red-600" : "bg-slate-900 dark:bg-slate-800 border border-slate-850 dark:border-slate-700"
         )}>
           <Check className={cn("w-4 h-4", toastError ? "text-red-200" : "text-emerald-400")} />
           <span>{toastMessage}</span>
@@ -278,18 +344,18 @@ export default function Equipe() {
       )}
 
       {/* Call to action: nova fiscalização */}
-      <div className="pt-4 border-t border-slate-200">
+      <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
         <button
           onClick={() => navigate('/visitas/nova')}
-          className="w-full flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-all font-bold group shadow-xl shadow-slate-900/10"
+          className="w-full flex items-center justify-between p-4 bg-slate-900 dark:bg-slate-850 text-white rounded-2xl hover:bg-slate-800 dark:hover:bg-slate-800/80 transition-all font-bold group shadow-xl shadow-slate-900/10 border border-slate-850 dark:border-slate-750/50 cursor-pointer"
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-slate-800 text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+            <div className="p-2 bg-slate-800 dark:bg-slate-900 text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div className="text-left">
               <p className="text-xs font-bold leading-none uppercase tracking-wide">Iniciar Nova Fiscalização</p>
-              <p className="text-[10px] text-slate-400 font-medium mt-1">Carregar dados da equipa em vigor</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-1">Carregar dados da equipa em vigor</p>
             </div>
           </div>
           <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" />

@@ -43,60 +43,60 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stats = useLiveQuery(async () => {
-    const firmas = await db.firmas.toArray();
-    const visitas = await db.visitas.toArray();
-    const infracoes = await db.infracoes.toArray();
-    const anexos = await db.anexos.toArray();
-    const queue = await db.syncQueue.toArray();
+    const [
+      totalFirmas, unsyncedFirmas,
+      totalVisitas, unsyncedVisitas,
+      totalInfracoes, unsyncedInfracoes,
+      totalAnexos, unsyncedAnexos
+    ] = await Promise.all([
+      db.firmas.count(),
+      db.firmas.filter(x => !x.synced).count(),
+      db.visitas.count(),
+      db.visitas.filter(x => !x.synced).count(),
+      db.infracoes.count(),
+      db.infracoes.filter(x => !x.synced).count(),
+      db.anexos.count(),
+      db.anexos.filter(x => !x.synced).count(),
+    ]);
 
-    const totalFirmas = firmas.length;
-    const unsyncedFirmasList = firmas.filter(f => !f.synced);
-    const unsyncedFirmas = unsyncedFirmasList.length;
-    const syncedFirmas = totalFirmas - unsyncedFirmas;
-
-    const totalVisitas = visitas.length;
-    const unsyncedVisitasList = visitas.filter(v => !v.synced);
-    const unsyncedVisitas = unsyncedVisitasList.length;
-    const syncedVisitas = totalVisitas - unsyncedVisitas;
-
-    const totalInfracoes = infracoes.length;
-    const unsyncedInfracoesList = infracoes.filter(i => !i.synced);
-    const unsyncedInfracoes = unsyncedInfracoesList.length;
-    const syncedInfracoes = totalInfracoes - unsyncedInfracoes;
-
-    const totalAnexos = anexos.length;
-    const unsyncedAnexosList = anexos.filter(a => !a.synced);
-    const unsyncedAnexos = unsyncedAnexosList.length;
-    const syncedAnexos = totalAnexos - unsyncedAnexos;
-
-    // Bytes totais em cache
-    const payloadString = JSON.stringify({ firmas, visitas, infracoes, anexos, queue });
-    const bytes = new Blob([payloadString]).size;
-
-    // Bytes apenas dos registos não sincronizados (estimativa de payload de upload)
-    const unsyncedPayload = JSON.stringify({
-      firmas: unsyncedFirmasList,
-      visitas: unsyncedVisitasList,
-      infracoes: unsyncedInfracoesList,
-      anexos: unsyncedAnexosList,
-    });
-    const unsyncedBytes = new Blob([unsyncedPayload]).size;
-
-    // Última sync do metadata
-    const metaLastSync = await db.table('metadata').get('last_sync_at');
+    const metaLastSync = await db.metadata.get('last_sync_at');
     const lastSyncAt: string | null = metaLastSync?.value || null;
 
     return {
-      totalFirmas, unsyncedFirmas, syncedFirmas,
-      totalVisitas, unsyncedVisitas, syncedVisitas,
-      totalInfracoes, unsyncedInfracoes, syncedInfracoes,
-      totalAnexos, unsyncedAnexos, syncedAnexos,
-      queueLength: queue.length,
-      bytes,
-      unsyncedBytes,
+      totalFirmas, unsyncedFirmas, syncedFirmas: totalFirmas - unsyncedFirmas,
+      totalVisitas, unsyncedVisitas, syncedVisitas: totalVisitas - unsyncedVisitas,
+      totalInfracoes, unsyncedInfracoes, syncedInfracoes: totalInfracoes - unsyncedInfracoes,
+      totalAnexos, unsyncedAnexos, syncedAnexos: totalAnexos - unsyncedAnexos,
+      queueLength: 0,
       lastSyncAt,
     };
   }, []);
+
+  const [bytesState, setBytesState] = useState<{ bytes: number; unsyncedBytes: number }>({
+    bytes: 0, unsyncedBytes: 0,
+  });
+  const bytesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (bytesDebounceRef.current) clearTimeout(bytesDebounceRef.current);
+    bytesDebounceRef.current = setTimeout(async () => {
+      const [firmas, visitas, infracoes, anexos, queue] = await Promise.all([
+        db.firmas.toArray(), db.visitas.toArray(), db.infracoes.toArray(),
+        db.anexos.toArray(), db.syncQueue.toArray(),
+      ]);
+      const bytes = new Blob([JSON.stringify({ firmas, visitas, infracoes, anexos, queue })]).size;
+      const unsyncedFirmasList   = firmas.filter(f => !f.synced);
+      const unsyncedVisitasList  = visitas.filter(v => !v.synced);
+      const unsyncedInfracoesList = infracoes.filter(i => !i.synced);
+      const unsyncedAnexosList   = anexos.filter(a => !a.synced);
+      const unsyncedBytes = new Blob([JSON.stringify({
+        firmas: unsyncedFirmasList, visitas: unsyncedVisitasList,
+        infracoes: unsyncedInfracoesList, anexos: unsyncedAnexosList,
+      })]).size;
+      setBytesState({ bytes, unsyncedBytes });
+    }, 5000);
+    return () => { if (bytesDebounceRef.current) clearTimeout(bytesDebounceRef.current); };
+  }, [stats]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === undefined || bytes === null || bytes === 0) return '0 Bytes';
@@ -405,7 +405,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-100 dark:border-slate-800 gap-4">
             <div>
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-0.5">Ocupação em Disco (Estimativa de Dados)</span>
-              <span className="text-2xl font-black text-slate-900 dark:text-white">{stats ? formatBytes(stats.bytes) : 'A calcular...'}</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white">{bytesState.bytes === 0 ? 'A calcular...' : formatBytes(bytesState.bytes)}</span>
             </div>
             <div className="flex gap-4">
               <div className="text-center bg-emerald-50 dark:bg-emerald-950/20 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30 min-w-[100px]">
@@ -478,7 +478,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
         const isSyncing = syncState.phase === 'pushing' || syncState.phase === 'pulling';
         const unsyncedTotal = (stats?.unsyncedFirmas ?? 0) + (stats?.unsyncedVisitas ?? 0) +
           (stats?.unsyncedInfracoes ?? 0) + (stats?.unsyncedAnexos ?? 0);
-        const unsyncedBytes = stats?.unsyncedBytes ?? 0;
+        const unsyncedBytes = bytesState.unsyncedBytes;
 
         const phaseLabel =
           syncState.phase === 'pushing' ? 'A enviar dados para o servidor...' :

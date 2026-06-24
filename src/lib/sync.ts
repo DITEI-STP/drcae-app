@@ -160,32 +160,16 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   if (response.accepted && response.accepted.length > 0) {
     const acceptedIds = new Set(response.accepted);
     const now = Date.now();
-    const CINCO_MIN = 5 * 60 * 1000;
+    const UMA_HORA = 60 * 60 * 1000;
 
-    // Actualizar status nas tabelas locais
-    for (const f of unsyncedFirmas) {
-      if (f.id && acceptedIds.has(f.id)) {
-        await db.firmas.update(f.id, { synced: true });
-      }
-    }
-    for (const v of unsyncedVisitas) {
-      if (v.id && acceptedIds.has(v.id)) {
-        // Confirmada se sincronizou em ≤ 5 min após o registo, pendente caso contrário
-        const age = now - (v.createdAt || 0);
-        const confirmationStatus = age <= CINCO_MIN ? 'confirmada' : 'pendente';
-        await db.visitas.update(v.id, { synced: true, confirmationStatus });
-      }
-    }
-    for (const inf of unsyncedInfracoes) {
-      if (inf.id && acceptedIds.has(inf.id)) {
-        await db.infracoes.update(inf.id, { synced: true });
-      }
-    }
-    for (const a of unsyncedAnexos) {
-      if (a.id && acceptedIds.has(a.id)) {
-        await db.anexos.update(a.id, { synced: true });
-      }
-    }
+    await db.batchMarkSynced({
+      firmaIds: unsyncedFirmas.filter(f => f.id && acceptedIds.has(f.id)).map(f => f.id!),
+      visitaUpdates: unsyncedVisitas
+        .filter(v => v.id && acceptedIds.has(v.id))
+        .map(v => ({ id: v.id!, confirmationStatus: (now - (v.createdAt || 0)) <= UMA_HORA ? 'confirmada' : 'pendente' })),
+      infracaoIds: unsyncedInfracoes.filter(i => i.id && acceptedIds.has(i.id)).map(i => i.id!),
+      anexoIds: unsyncedAnexos.filter(a => a.id && acceptedIds.has(a.id)).map(a => a.id!),
+    });
   }
 
   const accepted = response.accepted?.length || 0;
@@ -198,47 +182,57 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   };
 }
 
+let isSyncInProgress = false;
+
 // Sincronização Geral (Push -> Pull)
 export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
+  if (isSyncInProgress) {
+    return { pulled: 0, pushed: 0, errors: [] };
+  }
+  isSyncInProgress = true;
   const startedAt = Date.now();
-  patchSyncState({ startedAt, endedAt: undefined, errors: [], needsAuth: false });
+  patchSyncState({ phase: 'pushing', startedAt, endedAt: undefined, errors: [], needsAuth: false });
 
-  // 1. Push
-  const pushRes = await syncPush();
-
-  // Se push falhou por auth, não tentar pull (mesmo motivo de falha)
-  if (pushRes.needsAuth) {
-    patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
-    return { pulled: 0, pushed: 0, errors: [], needsAuth: true };
-  }
-
-  // 2. Pull
-  let pulled = 0;
   try {
-    pulled = await syncPull(profile);
-  } catch (err) {
-    if (err instanceof AuthSyncError) {
+    // 1. Push
+    const pushRes = await syncPush();
+
+    // Se push falhou por auth, não tentar pull (mesmo motivo de falha)
+    if (pushRes.needsAuth) {
       patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
-      return { pulled: 0, pushed: pushRes.pushed, errors: pushRes.errors, needsAuth: true };
+      return { pulled: 0, pushed: 0, errors: [], needsAuth: true };
     }
-    patchSyncState({ phase: 'error', errors: [(err as Error).message], endedAt: Date.now() });
-    throw err;
+
+    // 2. Pull
+    let pulled = 0;
+    try {
+      pulled = await syncPull(profile);
+    } catch (err) {
+      if (err instanceof AuthSyncError) {
+        patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
+        return { pulled: 0, pushed: pushRes.pushed, errors: pushRes.errors, needsAuth: true };
+      }
+      patchSyncState({ phase: 'error', errors: [(err as Error).message], endedAt: Date.now() });
+      throw err;
+    }
+
+    const endedAt = Date.now();
+    patchSyncState({
+      phase: 'done',
+      endedAt,
+      lastPushDone: pushRes.pushed,
+      lastPushErrors: pushRes.errors.length,
+      lastPullCount: pulled,
+      lastDurationMs: endedAt - startedAt,
+      errors: pushRes.errors,
+    });
+
+    return {
+      pulled,
+      pushed: pushRes.pushed,
+      errors: pushRes.errors,
+    };
+  } finally {
+    isSyncInProgress = false;
   }
-
-  const endedAt = Date.now();
-  patchSyncState({
-    phase: 'done',
-    endedAt,
-    lastPushDone: pushRes.pushed,
-    lastPushErrors: pushRes.errors.length,
-    lastPullCount: pulled,
-    lastDurationMs: endedAt - startedAt,
-    errors: pushRes.errors,
-  });
-
-  return {
-    pulled,
-    pushed: pushRes.pushed,
-    errors: pushRes.errors,
-  };
 }

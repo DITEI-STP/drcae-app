@@ -377,6 +377,28 @@ export class DrcaeDB extends Dexie {
       ciphertext: encryptedCanary
     });
   }
+
+  async batchMarkSynced(updates: {
+    firmaIds: string[];
+    visitaUpdates: { id: string; confirmationStatus: 'confirmada' | 'pendente' }[];
+    infracaoIds: string[];
+    anexoIds: string[];
+  }): Promise<void> {
+    await this.transaction('rw',
+      this.table('firmas'), this.table('visitas'),
+      this.table('infracoes'), this.table('anexos'),
+      async () => {
+        for (const id of updates.firmaIds)
+          await this.table('firmas').update(id, { synced: true });
+        for (const { id, confirmationStatus } of updates.visitaUpdates)
+          await this.table('visitas').update(id, { synced: true, confirmationStatus });
+        for (const id of updates.infracaoIds)
+          await this.table('infracoes').update(id, { synced: true });
+        for (const id of updates.anexoIds)
+          await this.table('anexos').update(id, { synced: true });
+      }
+    );
+  }
 }
 
 export const db = new DrcaeDB();
