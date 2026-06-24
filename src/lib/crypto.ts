@@ -181,6 +181,35 @@ export function getActiveKey(): AppCryptoKey | null {
   return activeKey;
 }
 
+// Deriva uma assinatura local irreversível baseada em NIF + Senha + device_id.
+// Independente do salt do servidor — funciona 100% offline.
+// Usada para verificar credenciais offline sem expor a chave AES.
+export async function deriveLocalSignature(
+  nif: string,
+  password: string,
+  deviceId: string
+): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await globalThis.crypto.subtle.importKey(
+    'raw',
+    enc.encode(nif + ':' + password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await globalThis.crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: enc.encode(deviceId + ':' + nif),
+      iterations: 600000,
+    },
+    keyMaterial,
+    256
+  );
+  return bytesToHex(new Uint8Array(bits));
+}
+
 export async function restoreSessionKey(hex: string): Promise<AppCryptoKey> {
   const bytes = hexToBytes(hex);
   if (typeof crypto === 'undefined' || !crypto.subtle) {

@@ -211,3 +211,27 @@ export async function exportPackage(profile = 'standard'): Promise<any> {
     body: JSON.stringify({ profile }),
   });
 }
+
+export async function getRealtimeConnectionToken(): Promise<{ token: string; channels: string[]; vapidPublicKey?: string | null }> {
+  return request('realtime/connection-token', {
+    method: 'POST',
+    body: JSON.stringify({ device_id: getDeviceId() }),
+  });
+}
+
+export async function getRealtimeSubscriptionToken(channel: string): Promise<{ token: string }> {
+  return request('realtime/subscription-token', {
+    method: 'POST',
+    body: JSON.stringify({ device_id: getDeviceId(), channel }),
+  });
+}
+
+export async function savePushSubscription(subscription: PushSubscriptionJSON): Promise<{ success: boolean; configured: boolean }> {
+  return request('realtime/push-subscription', {
+    method: 'POST',
+    body: JSON.stringify({
+      device_id: getDeviceId(),
+      subscription,
+    }),
+  });
+}

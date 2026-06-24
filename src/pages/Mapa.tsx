@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, Check, Map, WifiOff } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, Check, Map, WifiOff, LayoutList, LayoutGrid } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useGeoLocation } from '../lib/geo';
 
 const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
   'Água Grande': { lat: 0.336, lng: 6.730 },
@@ -13,6 +14,30 @@ const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
   'Lembá': { lat: 0.360, lng: 6.480 },
   'Caué': { lat: 0.140, lng: 6.640 },
   'RAP': { lat: 1.630, lng: 7.400 }
+};
+
+const getFirmaCoordinates = (firma: any) => {
+  if (firma.geolocation) {
+    return { lat: firma.geolocation.lat, lng: firma.geolocation.lng };
+  }
+  if (firma.atividades && firma.atividades.length > 0) {
+    const activeAtiv = firma.atividades.find((a: any) => !!a.geolocation);
+    if (activeAtiv && activeAtiv.geolocation) {
+      return { lat: activeAtiv.geolocation.lat, lng: activeAtiv.geolocation.lng };
+    }
+  }
+  return null;
+};
+
+const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return 6371 * c; // Km
 };
 
 export default function Mapa() {
@@ -27,6 +52,21 @@ export default function Mapa() {
   const [navProgress, setNavProgress] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  
+  // Novos estados para filtragem e paginação
+  const [gpsFilter, setGpsFilter] = useState<'all' | 'mapped' | 'unmapped'>('all');
+  const [visibleCount, setVisibleCount] = useState(15);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() =>
+    (localStorage.getItem('drcae_view_mapa') as 'list' | 'grid') || 'list'
+  );
+
+  const toggleView = (mode: 'list' | 'grid') => {
+    setViewMode(mode);
+    localStorage.setItem('drcae_view_mapa', mode);
+  };
+  
+  // Hook de Geolocalização Atual
+  const { location: currentLoc } = useGeoLocation();
 
   useEffect(() => {
     const up = () => setIsOnline(true);
@@ -38,7 +78,100 @@ export default function Mapa() {
 
   const selectedFirma = firmas?.find(f => f.id === selectedFirmaId);
 
-  // Calculate distance from center (Água Grande approximate capital center for demonstration)
+  // Contagem dinâmica das abas com base nos dados reais
+  const counts = React.useMemo(() => {
+    if (!firmas) return { all: 0, mapped: 0, unmapped: 0 };
+    let mapped = 0;
+    let unmapped = 0;
+    firmas.forEach(f => {
+      const hasGps = !!f.geolocation || (f.atividades?.some(a => !!a.geolocation) || false);
+      if (hasGps) mapped++;
+      else unmapped++;
+    });
+    return { all: firmas.length, mapped, unmapped };
+  }, [firmas]);
+
+  // Lógica de filtragem e ORDENAÇÃO por proximidade e presença de GPS
+  const filteredFirmas = React.useMemo(() => {
+    if (!firmas) return [];
+    
+    const baseLat = currentLoc?.lat ?? 0.336;
+    const baseLng = currentLoc?.lng ?? 6.730;
+
+    // Mapear firmas com dados de GPS e distância calculada
+    const mappedWithDistance = firmas.map(f => {
+      const coords = getFirmaCoordinates(f);
+      let distance = Infinity;
+      if (coords) {
+        distance = getDistance(baseLat, baseLng, coords.lat, coords.lng);
+      }
+      return {
+        firma: f,
+        hasGps: !!coords,
+        distance
+      };
+    });
+
+    // Filtrar firmas
+    const filtered = mappedWithDistance.filter(item => {
+      const hasSomeGps = item.hasGps;
+      if (gpsFilter === 'mapped' && !hasSomeGps) return false;
+      if (gpsFilter === 'unmapped' && hasSomeGps) return false;
+
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const f = item.firma;
+      return f.name.toLowerCase().includes(q) ||
+             (f.nif && f.nif.toLowerCase().includes(q)) ||
+             f.district.toLowerCase().includes(q) ||
+             (f.address && f.address.toLowerCase().includes(q));
+    });
+
+    // Ordenação: 
+    // 1. Firmas com GPS primeiro
+    // 2. Entre firmas com GPS, as mais próximas da posição atual (ou capital) primeiro
+    // 3. Em caso de empate, ordem alfabética
+    filtered.sort((a, b) => {
+      if (a.hasGps !== b.hasGps) {
+        return a.hasGps ? -1 : 1;
+      }
+      if (a.hasGps && b.hasGps) {
+        return a.distance - b.distance;
+      }
+      return (a.firma.name || '').localeCompare(b.firma.name || '');
+    });
+
+    return filtered.map(item => item.firma);
+  }, [firmas, gpsFilter, searchQuery, currentLoc]);
+
+  const totalFilteredCount = filteredFirmas.length;
+  
+  // Lógica de paginação
+  const paginatedFirmas = React.useMemo(() => {
+    return filteredFirmas.slice(0, visibleCount);
+  }, [filteredFirmas, visibleCount]);
+
+  // Handlers para mudança de filtro e pesquisa que restauram a paginação inicial
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setVisibleCount(15);
+  };
+
+  const handleFilterChange = (filter: 'all' | 'mapped' | 'unmapped') => {
+    setGpsFilter(filter);
+    setVisibleCount(15);
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
+      if (totalFilteredCount && visibleCount < totalFilteredCount) {
+        setVisibleCount(prev => prev + 15);
+      }
+    }
+  };
+
+  // Calcular distância com base na posição real (ou capital como fallback)
   const getFirmaLocationInfo = (firma: typeof selectedFirma, activeAtividadeId: string | null) => {
     if (!firma) return { lat: 0.336, lng: 6.730, distance: 0, time: 0, steps: [] };
 
@@ -61,9 +194,9 @@ export default function Mapa() {
        lng = firma.atividades[0].geolocation.lng;
     }
 
-    // Rough distance calculation from Água Grande capital (0.336, 6.730)
-    const baseLat = 0.336;
-    const baseLng = 6.730;
+    // Calcular distância real a partir da posição atual ou capital
+    const baseLat = currentLoc?.lat ?? 0.336;
+    const baseLng = currentLoc?.lng ?? 6.730;
     const rad = Math.PI / 180;
     const dLat = (lat - baseLat) * rad;
     const dLng = (lng - baseLng) * rad;
@@ -76,7 +209,7 @@ export default function Mapa() {
     const travelTimeMin = Math.round(distanceKm * 2.5) || 5;
 
     const steps = [
-      { text: "Partida da sede regional em Água Grande", dist: "0 m" },
+      { text: currentLoc ? "Partida da sua localização atual" : "Partida da sede regional em Água Grande", dist: "0 m" },
       { text: `Siga em direção à via expressa principal p/ distrito ${firma.district}`, dist: "450 m" },
       { text: `Siga em direção a ${firma.address || firma.name}`, dist: `${(distanceKm * 0.7).toFixed(1)} km` },
       { text: `Chegada ao ponto calibrado da ${targetTitle}`, dist: "Destino" }
@@ -137,91 +270,219 @@ export default function Mapa() {
          </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
+      <div 
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar"
+      >
          {!selectedFirma ? (
             <div className="space-y-6">
-              {/* Search Input Box */}
-              <div className="relative mb-4">
-                 <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                 </span>
-                 <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Pesquisar por designação, NIF, distrito ou morada..."
-                    className="w-full pl-10 pr-10 py-3 bg-white text-sm text-slate-800 rounded-xl border border-slate-200 focus:outline-hidden shadow-xs"
-                 />
-                 {searchQuery && (
+               {/* Search Input and View Toggle Row */}
+               <div className="flex gap-2 shrink-0 items-center mb-4">
+                  <div className="relative flex-1">
+                     <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                     </span>
+                     <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => handleSearchChange(e.target.value)}
+                        placeholder="Pesquisar por designação, NIF, distrito ou morada..."
+                        className="w-full pl-10 pr-10 py-3 bg-white text-sm text-slate-800 rounded-xl border border-slate-200 focus:outline-hidden shadow-xs"
+                     />
+                     {searchQuery && (
+                        <button
+                           onClick={() => handleSearchChange('')}
+                           className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 text-xs font-bold font-mono"
+                        >
+                           Limpar
+                        </button>
+                     )}
+                  </div>
+                  
+                  {/* View Mode Toggle Buttons */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0 border border-slate-200/30">
                     <button
-                       onClick={() => setSearchQuery('')}
-                       className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 text-xs font-bold font-mono"
+                      onClick={() => toggleView('list')}
+                      className={cn(
+                        'p-2 rounded-lg transition-colors cursor-pointer',
+                        viewMode === 'list'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-655 dark:hover:text-slate-200'
+                      )}
+                      title="Vista Lista"
                     >
-                       Limpar
+                      <LayoutList className="w-4 h-4" />
                     </button>
-                 )}
-              </div>
+                    <button
+                      onClick={() => toggleView('grid')}
+                      className={cn(
+                        'p-2 rounded-lg transition-colors cursor-pointer',
+                        viewMode === 'grid'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-655 dark:hover:text-slate-200'
+                      )}
+                      title="Vista Cards"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
+               </div>
 
-              <div className="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 flex items-center gap-3">
-                <Navigation className="w-5 h-5 text-blue-600 shrink-0" />
-                <p className="text-sm font-medium">Selecione um operador económico abaixo para ver a sua geolocalização e traçar a rota diretamente na aplicação.</p>
-              </div>
+               <div className="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 flex items-center gap-3">
+                 <Navigation className="w-5 h-5 text-blue-600 shrink-0" />
+                 <p className="text-sm font-medium">Selecione um operador económico abaixo para ver a sua geolocalização e traçar a rota diretamente na aplicação.</p>
+               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 {(() => {
-                    const filtered = firmas?.filter(f => {
-                       if (!searchQuery.trim()) return true;
-                       const q = searchQuery.toLowerCase();
-                       return f.name.toLowerCase().includes(q) ||
-                              (f.nif && f.nif.toLowerCase().includes(q)) ||
-                              f.district.toLowerCase().includes(q) ||
-                              (f.address && f.address.toLowerCase().includes(q));
-                    }) || [];
-                    if (filtered.length === 0) {
-                       return (
-                          <div className="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2 w-full">
-                             <MapPin className="w-8 h-8 text-slate-300 mx-auto" />
-                             <p className="text-sm font-bold text-slate-600">Nenhum operador económico encontrado</p>
-                             <p className="text-xs text-slate-400">Tente cadastrar um novo operador ou limpe o termo de busca.</p>
-                          </div>
-                       );
-                    }
-                    return filtered.map(firma => {
-                       const hasSomeGps = !!firma.geolocation || (firma.atividades?.some(a => !!a.geolocation));
-                       return (
-                          <div 
-                            key={firma.id} 
-                            onClick={() => setSelectedFirmaId(firma.id!)}
-                            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group"
-                          >
-                             <div className="flex items-center gap-4 min-w-0">
-                                <div className={cn(
-                                   "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
-                                   hasSomeGps ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
-                                )}>
-                                   <MapPin className="w-6 h-6" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                   <h3 className="font-bold text-slate-900 truncate group-hover:text-blue-600">{firma.name}</h3>
-                                   <p className="text-xs text-slate-500 truncate">{firma.address || `${firma.district}, São Tomé`}</p>
-                                   <span className={cn(
-                                      "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 inline-block",
-                                      hasSomeGps ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
-                                   )}>
-                                      {hasSomeGps ? "📍 Coordenadas Gravadas" : "NIF: " + (firma.nif || "Formal")}
-                                   </span>
-                                </div>
-                             </div>
-                             <button className="w-10 h-10 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-600 rounded-full flex items-center justify-center transition-all shrink-0">
-                                <Navigation className="w-4 h-4" />
-                             </button>
-                          </div>
-                       );
-                    });
-                 })()}
-              </div>
+               {/* GPS Status Tabs */}
+               <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1 text-xs font-bold w-full select-none shrink-0 border border-slate-200/40">
+                 <button
+                   onClick={() => handleFilterChange('all')}
+                   className={cn(
+                     'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg transition-all cursor-pointer',
+                     gpsFilter === 'all'
+                       ? 'bg-white dark:bg-slate-700 text-blue-650 dark:text-blue-400 shadow-sm'
+                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-750 dark:hover:text-slate-200'
+                   )}
+                 >
+                   <span>Todos</span>
+                   <span className={cn(
+                     'px-1.5 py-0.5 rounded-md text-[10px] font-extrabold transition-colors',
+                     gpsFilter === 'all'
+                       ? 'bg-blue-600 text-white dark:bg-blue-500'
+                       : 'bg-slate-200/60 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400'
+                   )}>
+                     {counts.all}
+                   </span>
+                 </button>
+
+                 <button
+                   onClick={() => handleFilterChange('mapped')}
+                   className={cn(
+                     'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg transition-all cursor-pointer',
+                     gpsFilter === 'mapped'
+                       ? 'bg-white dark:bg-slate-700 text-emerald-650 dark:text-emerald-450 shadow-sm'
+                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-750 dark:hover:text-slate-200'
+                   )}
+                 >
+                   <span>Mapeados</span>
+                   <span className={cn(
+                     'px-1.5 py-0.5 rounded-md text-[10px] font-extrabold transition-colors',
+                     gpsFilter === 'mapped'
+                       ? 'bg-emerald-500 text-white dark:bg-emerald-500'
+                       : 'bg-slate-200/60 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400'
+                   )}>
+                     {counts.mapped}
+                   </span>
+                 </button>
+
+                 <button
+                   onClick={() => handleFilterChange('unmapped')}
+                   className={cn(
+                     'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg transition-all cursor-pointer',
+                     gpsFilter === 'unmapped'
+                       ? 'bg-white dark:bg-slate-700 text-slate-650 dark:text-slate-400 shadow-sm'
+                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-750 dark:hover:text-slate-200'
+                   )}
+                 >
+                   <span>Sem GPS</span>
+                   <span className={cn(
+                     'px-1.5 py-0.5 rounded-md text-[10px] font-extrabold transition-colors',
+                     gpsFilter === 'unmapped'
+                       ? 'bg-slate-500 text-white dark:bg-slate-600'
+                       : 'bg-slate-200/60 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400'
+                   )}>
+                     {counts.unmapped}
+                   </span>
+                 </button>
+               </div>
+
+               <div className={cn(
+                  viewMode === 'grid' ? "grid grid-cols-2 md:grid-cols-3 gap-3" : "space-y-3"
+               )}>
+                  {paginatedFirmas.length === 0 ? (
+                     <div className="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2 w-full">
+                        <MapPin className="w-8 h-8 text-slate-300 mx-auto" />
+                        <p className="text-sm font-bold text-slate-600">Nenhum operador económico encontrado</p>
+                        <p className="text-xs text-slate-400">Tente cadastrar um novo operador ou limpe os filtros.</p>
+                     </div>
+                  ) : (
+                     paginatedFirmas.map(firma => {
+                        const hasSomeGps = !!firma.geolocation || (firma.atividades?.some(a => !!a.geolocation));
+                        
+                        if (viewMode === 'grid') {
+                           return (
+                              <div 
+                                key={firma.id} 
+                                onClick={() => setSelectedFirmaId(firma.id!)}
+                                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group gap-3.5 min-h-[160px]"
+                              >
+                                 <div className="flex justify-between items-start w-full gap-2">
+                                    <div className={cn(
+                                       "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs",
+                                       hasSomeGps ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                                    )}>
+                                       <MapPin className="w-5 h-5" />
+                                    </div>
+                                    <button className="w-8 h-8 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-600 rounded-full flex items-center justify-center transition-all shrink-0">
+                                       <Navigation className="w-3.5 h-3.5" />
+                                    </button>
+                                 </div>
+                                 <div className="min-w-0 text-left">
+                                    <h3 className="font-bold text-slate-900 leading-tight truncate group-hover:text-blue-600">{firma.name}</h3>
+                                    <p className="text-xs text-slate-505 truncate mt-0.5">{firma.address || `${firma.district}, São Tomé`}</p>
+                                 </div>
+                                 <span className={cn(
+                                    "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start inline-block",
+                                    hasSomeGps ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                                 )}>
+                                    {hasSomeGps ? "📍 Coordenadas" : "NIF: " + (firma.nif || "Formal")}
+                                 </span>
+                              </div>
+                           );
+                        }
+
+                        // viewMode === 'list'
+                        return (
+                           <div 
+                             key={firma.id} 
+                             onClick={() => setSelectedFirmaId(firma.id!)}
+                             className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group"
+                           >
+                              <div className="flex items-center gap-4 min-w-0">
+                                 <div className={cn(
+                                    "w-12 h-12 rounded-full flex items-center justify-center shrink-0 shadow-xs",
+                                    hasSomeGps ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                                 )}>
+                                    <MapPin className="w-6 h-6" />
+                                 </div>
+                                 <div className="flex-1 min-w-0 text-left">
+                                    <h3 className="font-bold text-slate-900 truncate group-hover:text-blue-600">{firma.name}</h3>
+                                    <p className="text-xs text-slate-500 truncate">{firma.address || `${firma.district}, São Tomé`}</p>
+                                    <span className={cn(
+                                       "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 inline-block",
+                                       hasSomeGps ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                                    )}>
+                                       {hasSomeGps ? "📍 Coordenadas Gravadas" : "NIF: " + (firma.nif || "Formal")}
+                                    </span>
+                                 </div>
+                              </div>
+                              <button className="w-10 h-10 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-600 rounded-full flex items-center justify-center transition-all shrink-0">
+                                 <Navigation className="w-4 h-4" />
+                              </button>
+                           </div>
+                        );
+                     })
+                  )}
+
+                  {/* Progressive loading loader / feedback */}
+                  {totalFilteredCount > visibleCount && (
+                     <div className="col-span-full py-4 text-center text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider animate-pulse">
+                        Rolar para ver mais operadores...
+                     </div>
+                  )}
+               </div>
             </div>
          ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -6,6 +6,25 @@ import { ArrowLeft, ArrowRight, User, Calendar, MapPin, AlertTriangle, FileText,
 import { cn } from '../lib/utils';
 import { toast, customAlert } from '../lib/notifications';
 
+function getMemberAvatar(name: string): { initials: string; gradient: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = parts.slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+  const gradients = [
+    'from-blue-500 to-indigo-600',
+    'from-purple-500 to-pink-500',
+    'from-teal-500 to-emerald-600',
+    'from-orange-500 to-amber-600',
+    'from-violet-500 to-purple-600',
+    'from-rose-500 to-pink-600',
+    'from-cyan-500 to-blue-600',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return { initials, gradient: gradients[Math.abs(hash) % gradients.length] };
+}
+
 export default function VisitaDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -206,9 +225,22 @@ export default function VisitaDetail() {
                )}
 
                <div className="flex items-start gap-3">
-                  <User className="w-4 h-4 text-slate-400 mt-0.5" />
-                  <div className="flex flex-col">
-                     {visita.technicians.map(t => <span key={t} className="font-medium text-slate-800">{t}</span>)}
+                  <User className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
+                  <div className="flex flex-wrap gap-3">
+                     {visita.technicians.map(t => {
+                        const { initials, gradient } = getMemberAvatar(t);
+                        return (
+                           <div key={t} className="flex flex-col items-center gap-1">
+                              <div className={cn(
+                                 'w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-black shadow-sm bg-gradient-to-br',
+                                 gradient
+                              )}>
+                                 {initials}
+                              </div>
+                              <span className="text-[10px] font-semibold text-slate-600 text-center leading-tight max-w-[56px] truncate">{t.split(' ')[0]}</span>
+                           </div>
+                        );
+                     })}
                   </div>
                </div>
                {visita.geolocation && (

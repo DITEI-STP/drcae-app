@@ -826,74 +826,82 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
     setError('');
     setLoading(true);
 
+    // Verificação offline: assinatura local independente do servidor
+    const doOfflineLogin = async () => {
+      const stored = localStorage.getItem(`drcae_local_cred_${nif}`);
+      if (!stored) {
+        setError('Sem credenciais offline para este agente. Conecte-se à rede e inicie sessão uma primeira vez.');
+        return;
+      }
+      const { sigHex: storedSig, saltHex } = JSON.parse(stored) as { sigHex: string; saltHex: string };
+
+      const testSig = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
+      if (testSig !== storedSig) {
+        setError('Palavra-passe incorreta.');
+        return;
+      }
+
+      // Credenciais confirmadas — re-derivar chave AES e verificar canary
+      const derivedKey = await crypto.deriveKey(nif, password, saltHex);
+      crypto.setActiveKey(derivedKey);
+
+      const ok = await db.verifyOfflineKey();
+      if (!ok) {
+        setError('Cache offline corrompida. Conecte-se à rede e inicie sessão novamente.');
+        crypto.setActiveKey(null);
+        return;
+      }
+
+      localStorage.setItem('drcae_officer_nif', nif);
+      onLogin();
+    };
+
     try {
       const isOnline = navigator.onLine;
 
-      // 1. Obter salt — online: pedir ao servidor e cachear; offline: usar cache
-      let salt: string;
       if (isOnline) {
+        // ── CAMINHO ONLINE ────────────────────────────────────────────────
+        // 1. Obter salt do servidor
+        let salt: string;
         try {
           const saltRes = await api.getSalt();
           salt = saltRes.salt;
           localStorage.setItem('drcae_cached_salt', salt);
         } catch {
-          // Rede caiu mesmo com onLine=true — usar cache se disponível
-          const cached = localStorage.getItem('drcae_cached_salt');
-          if (!cached) {
-            setError('Sem ligação ao servidor e sem cache offline. Conecte-se à rede na primeira utilização.');
-            return;
-          }
-          salt = cached;
-        }
-      } else {
-        const cached = localStorage.getItem('drcae_cached_salt');
-        if (!cached) {
-          setError('Sem internet e sem cache de acesso offline. Conecte-se à rede na primeira utilização.');
+          // getSalt falhou com rede — tratar como offline
+          await doOfflineLogin();
           return;
         }
-        salt = cached;
-      }
 
-      // 2. Derivar chave local (sempre local, nunca vai à rede)
-      const derivedKey = await crypto.deriveKey(nif, password, salt);
-      crypto.setActiveKey(derivedKey);
+        // 2. Derivar chave AES localmente
+        const derivedKey = await crypto.deriveKey(nif, password, salt);
+        crypto.setActiveKey(derivedKey);
 
-      if (isOnline) {
+        // 3. Autenticar no servidor
         try {
-          // 3. Login online
           await api.login(nif, password);
-          // 4. Gravar canary encriptado para autenticação offline futura
-          await db.setupOfflineCanary();
-          localStorage.setItem('drcae_officer_nif', nif);
-          onLogin();
-        } catch (onlineErr: any) {
-          const msg = onlineErr.message || '';
-          const isNetworkErr = /fetch|network|failed to fetch|networkerror/i.test(msg);
-          if (isNetworkErr) {
-            // Rede caiu no meio do login — tentar offline com canary
-            const ok = await db.verifyOfflineKey();
-            if (ok) {
-              localStorage.setItem('drcae_officer_nif', nif);
-              onLogin();
-            } else {
-              setError('Sem ligação e sem credenciais offline gravadas. Ligue-se à rede e tente novamente.');
-              crypto.setActiveKey(null);
-            }
-          } else {
-            setError(msg || 'Credenciais inválidas.');
-            crypto.setActiveKey(null);
+        } catch (err: any) {
+          const isNetErr = /fetch|network|failed to fetch|networkerror/i.test(err?.message || '');
+          if (isNetErr) {
+            // Rede caiu a meio do login — usar caminho offline
+            await doOfflineLogin();
+            return;
           }
-        }
-      } else {
-        // Modo 100% offline — verificar canary encriptado local
-        const ok = await db.verifyOfflineKey();
-        if (ok) {
-          localStorage.setItem('drcae_officer_nif', nif);
-          onLogin();
-        } else {
-          setError('Palavra-passe incorreta ou sem cache offline ativa para este agente.');
+          setError(err?.message || 'Credenciais inválidas.');
           crypto.setActiveKey(null);
+          return;
         }
+
+        // 4. Sucesso online: actualizar canary e assinatura local
+        await db.setupOfflineCanary();
+        const sigHex = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
+        localStorage.setItem(`drcae_local_cred_${nif}`, JSON.stringify({ sigHex, saltHex: salt }));
+        localStorage.setItem('drcae_officer_nif', nif);
+        onLogin();
+
+      } else {
+        // ── CAMINHO OFFLINE ───────────────────────────────────────────────
+        await doOfflineLogin();
       }
     } catch (err: any) {
       setError(err.message || 'Erro ao processar autenticação.');
@@ -1152,7 +1160,8 @@ export default function App() {
 
   const handleLogin = async () => {
     setIsAuthenticated(true);
-    if (navigator.onLine) {
+    // Só chamar APIs se o login foi online (JWT presente); login offline não tem JWT
+    if (navigator.onLine && api.getJwtToken()) {
       try {
         const assetsData = await api.getAssets();
         localStorage.setItem('drcae_officers_list', JSON.stringify(assetsData.officers || []));

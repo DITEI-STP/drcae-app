@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, LogOut, Maximize, Minimize } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { triggerFullSync } from '../lib/sync';
+import { useAppRealtime } from '../lib/realtime';
 import PwaBanners from './PwaBanners';
 
 const navItems = [
@@ -55,33 +56,7 @@ export default function Layout({ onLogout }: LayoutProps) {
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isOnline && unsyncedCount > 0 && !isSyncing) syncData();
-  }, [isOnline, unsyncedCount, isSyncing]);
-
-  // Fechar dropdown ao clicar fora
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
-        setShowAvatarMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const syncData = async () => {
+  const syncData = useCallback(async () => {
     setIsSyncing(true);
     setSyncErrorMsg(null);
     setSyncNeedsAuth(false);
@@ -100,7 +75,39 @@ export default function Layout({ onLogout }: LayoutProps) {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, []);
+
+  useAppRealtime({
+    enabled: isOnline,
+    officerUid: officerInfo?.uid ?? null,
+    onSyncRequested: syncData,
+  });
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isOnline && unsyncedCount > 0 && !isSyncing) syncData();
+  }, [isOnline, unsyncedCount, isSyncing, syncData]);
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setShowAvatarMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   useEffect(() => {
     const hasFullscreenSupport = typeof document.documentElement.requestFullscreen === 'function';

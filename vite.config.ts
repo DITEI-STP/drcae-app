@@ -23,32 +23,16 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
         registerType: 'prompt',
         injectRegister: 'auto',
         scope: '/app/',
         base: '/app/',
-        workbox: {
+        injectManifest: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
-          cleanupOutdatedCaches: true,
-          navigateFallback: '/app/index.html',
-          navigateFallbackDenylist: [/^\/api\//],
-          // argon2-browser embeds WASM pesado — limitar tamanho de precache
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-          runtimeCaching: [
-            {
-              // Fotos e ficheiros armazenados no backend
-              urlPattern: /\/api\/storage\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'drcae-storage-cache',
-                expiration: {
-                  maxEntries: 300,
-                  maxAgeSeconds: 30 * 24 * 60 * 60,
-                },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-          ],
         },
         manifest: {
           name: 'DRCAE — Inspecções',

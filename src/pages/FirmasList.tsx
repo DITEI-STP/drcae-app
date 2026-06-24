@@ -276,11 +276,16 @@ export default function FirmasList() {
           className="py-3 px-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-750 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
         >
           <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 dark:text-slate-505" />
-          <span>Agrupado por: <span className="text-indigo-600 dark:text-indigo-400 capitalize">{groupDimension === 'type' ? 'Tipo' : groupDimension === 'district' ? 'Distrito' : 'Risco'}</span></span>
+          <span>
+            <span className="hidden sm:inline">Agrupado por: </span>
+            <span className="text-indigo-600 dark:text-indigo-400 capitalize">
+              {groupDimension === 'type' ? 'Tipo' : groupDimension === 'district' ? 'Distrito' : 'Risco'}
+            </span>
+          </span>
         </button>
 
-        {/* Toggle lista/grid — apenas tablet+ */}
-        <div className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
+        {/* Toggle lista/grid */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
           <button
             onClick={() => toggleView('list')}
             className={cn(

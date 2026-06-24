@@ -79,7 +79,7 @@ export default function VisitasList() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
           <button
             onClick={() => toggleView('list')}
             className={cn(
