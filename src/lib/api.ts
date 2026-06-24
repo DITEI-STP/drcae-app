@@ -125,7 +125,16 @@ export async function login(nif: string, password: string): Promise<any> {
 }
 
 // 3. Refresh silencioso (usa cookie HttpOnly)
-export async function refreshSilent(): Promise<boolean> {
+// Singleton: múltiplos 401 simultâneos partilham o mesmo pedido de refresh
+let _refreshPromise: Promise<boolean> | null = null;
+
+export function refreshSilent(): Promise<boolean> {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null; });
+  return _refreshPromise;
+}
+
+async function _doRefresh(): Promise<boolean> {
   const deviceId = getDeviceId();
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {

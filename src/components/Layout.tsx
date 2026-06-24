@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, LogOut, Maximize, Minimize } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -42,7 +42,18 @@ export default function Layout({ onLogout }: LayoutProps) {
   const officerName: string = officerInfo?.name ?? 'Agente';
   const officerInitials = getInitials(officerName);
 
-  const syncQueueCount = useLiveQuery(() => db.syncQueue.count(), []) || 0;
+  // Contagem real de itens não sincronizados (não o audit log syncQueue)
+  const unsyncedCount = useLiveQuery(async () => {
+    const [f, v, i, a] = await Promise.all([
+      db.firmas.filter(x => !x.synced).count(),
+      db.visitas.filter(x => !x.synced).count(),
+      db.infracoes.filter(x => !x.synced).count(),
+      db.anexos.filter(x => !x.synced).count(),
+    ]);
+    return f + v + i + a;
+  }, []) || 0;
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -56,8 +67,8 @@ export default function Layout({ onLogout }: LayoutProps) {
   }, []);
 
   useEffect(() => {
-    if (isOnline && syncQueueCount > 0) syncData();
-  }, [isOnline, syncQueueCount]);
+    if (isOnline && unsyncedCount > 0 && !isSyncing) syncData();
+  }, [isOnline, unsyncedCount, isSyncing]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -173,16 +184,16 @@ export default function Layout({ onLogout }: LayoutProps) {
               <span className="hidden md:inline">Offline</span>
             </div>
           )}
-          {isOnline && syncQueueCount > 0 && (
+          {isOnline && unsyncedCount > 0 && (
             <button
-              onClick={syncData}
-              className="flex items-center gap-1.5 px-2 md:px-3 py-1 bg-emerald-900/40 border border-emerald-500/50 rounded-full text-xs text-emerald-400 font-medium hover:bg-emerald-800/60 transition-colors"
+              onClick={() => navigate('/pendentes')}
+              className="flex items-center gap-1.5 px-2 md:px-3 py-1 bg-amber-900/40 border border-amber-500/50 rounded-full text-xs text-amber-400 font-medium hover:bg-amber-800/60 transition-colors"
             >
               <RefreshCw className={cn('w-3.5 h-3.5', isSyncing && 'animate-spin')} />
-              <span>{syncQueueCount} <span className="hidden md:inline">pendentes</span></span>
+              <span>{unsyncedCount} <span className="hidden md:inline">pendentes</span></span>
             </button>
           )}
-          {isOnline && syncQueueCount === 0 && (
+          {isOnline && unsyncedCount === 0 && (
             <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-emerald-900/40 border border-emerald-500/50 rounded-full text-xs text-emerald-400 font-medium">
               <div className="w-2 h-2 rounded-full bg-emerald-500" />
               Sincronização Ativa

@@ -15,24 +15,15 @@ import NovaVisita from './pages/NovaVisita';
 import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
 import Equipe from './pages/Equipe';
+import PendentesPage from './pages/PendentesPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap } from 'lucide-react';
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { triggerFullSync } from './lib/sync';
-import { type SyncSnapshot, getSyncSnapshot, subscribeSyncState } from './lib/syncState';
-
-// Hook que subscreve ao estado global de sync sem polling
-function useSyncState(): SyncSnapshot {
-  const [state, setState] = useState<SyncSnapshot>(getSyncSnapshot);
-  useEffect(() => {
-    // Sincronizar imediatamente (pode ter mudado entre renders)
-    setState(getSyncSnapshot());
-    return subscribeSyncState(setState);
-  }, []);
-  return state;
-}
+import { useSyncState } from './lib/syncState';
+export { useSyncState };
 import NotificationContainer from './components/NotificationContainer';
 import { toast, customAlert } from './lib/notifications';
 
@@ -1098,6 +1089,14 @@ export default function App() {
       if (savedKeyHex) {
         try {
           await crypto.restoreSessionKey(savedKeyHex);
+          // JWT pode ter expirado enquanto o tab esteve aberto — tentar refresh proactivo
+          if (!api.getJwtToken()) {
+            const refreshed = await api.refreshSilent();
+            if (!refreshed) {
+              sessionStorage.removeItem('drcae_session_key');
+              return;
+            }
+          }
           setIsAuthenticated(true);
         } catch (err) {
           console.error('[drcae] Falha ao restaurar chave criptográfica:', err);
@@ -1150,23 +1149,6 @@ export default function App() {
     window.addEventListener('device-pending-approval', handler);
     return () => window.removeEventListener('device-pending-approval', handler);
   }, []);
-
-  // Sync automático quando volta a ficar online
-  useEffect(() => {
-    const handleOnline = async () => {
-      if (isAuthenticated) {
-        console.log('Online detectado! Iniciando sync automático...');
-        try {
-          await triggerFullSync();
-          console.log('Sync automático concluído com sucesso!');
-        } catch (err) {
-          console.error('Falha ao rodar sync automático:', err);
-        }
-      }
-    };
-    window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, [isAuthenticated]);
 
   const handleLogin = async () => {
     setIsAuthenticated(true);
@@ -1241,8 +1223,10 @@ export default function App() {
 
           <Route path="mapa" element={<Mapa />} />
 
+          <Route path="pendentes" element={<PendentesPage />} />
+
           <Route path="settings" element={<SettingsPage onLogout={handleLogout} />} />
-          
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
