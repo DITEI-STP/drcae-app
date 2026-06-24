@@ -28,6 +28,15 @@ const getCachedRamos = (): string[] => {
 
 const RAMOS = getCachedRamos();
 
+const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent || '';
+  const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && isTouchDevice);
+  return isMobileUA && isTouchDevice;
+};
+
 export default function NovaVisita() {
   const navigate = useNavigate();
   const locationState = useLocation().state as { firmaId?: string } | null;
@@ -1231,7 +1240,7 @@ export default function NovaVisita() {
              <div className="grid grid-cols-2 gap-4">
                <button
                  onClick={() => {
-                   if (navigator.mediaDevices?.getUserMedia) {
+                   if (isMobileDevice() && navigator.mediaDevices?.getUserMedia) {
                      setShowCamera(true);
                    } else {
                      cameraInputRef.current?.click();

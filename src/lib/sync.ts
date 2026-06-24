@@ -44,14 +44,33 @@ export async function syncPull(profile?: string): Promise<number> {
     count += response.firmas.length;
   }
 
-  // Actualizar Visitas — preservar confirmationStatus local se já existe;
-  // visitas recebidas do servidor (ex: do admin) são sempre 'confirmada' por defeito
+  // Actualizar Visitas — merge inteligente: dados do servidor têm precedência,
+  // mas campos locais que o servidor não devolve (ou devolve como null/vazio) são preservados.
+  // Isto evita a perda de recomendações, produtos, notas e outros campos offline-first.
   if (response.visitas && response.visitas.length > 0) {
     const enriched = await Promise.all(
       response.visitas.map(async (v: any) => {
         const existing = await db.visitas.get(v.id);
         return {
+          // 1. Base: dados locais completos (garantia de não apagar nada)
+          ...(existing ?? {}),
+          // 2. Override: dados do servidor têm precedência sobre locais
           ...v,
+          // 3. Preservar campos locais quando o servidor os devolve vazios/ausentes
+          recomendacoes: (v.recomendacoes && v.recomendacoes.length > 0)
+            ? v.recomendacoes
+            : (existing?.recomendacoes ?? []),
+          recomendacoesHistoricas: (v.recomendacoesHistoricas && v.recomendacoesHistoricas.length > 0)
+            ? v.recomendacoesHistoricas
+            : (existing?.recomendacoesHistoricas ?? []),
+          produtos: (v.produtos && v.produtos.length > 0)
+            ? v.produtos
+            : (existing?.produtos ?? []),
+          notes: v.notes ?? existing?.notes,
+          atividadeEconomica: v.atividadeEconomica ?? existing?.atividadeEconomica,
+          offlineCode: v.offlineCode ?? existing?.offlineCode,
+          locationAutoCaptured: v.locationAutoCaptured ?? existing?.locationAutoCaptured,
+          // 4. Metadados de sync sempre actualizados
           synced: true,
           confirmationStatus: existing?.confirmationStatus ?? 'confirmada',
         };

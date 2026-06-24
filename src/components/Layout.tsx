@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -90,16 +90,63 @@ export default function Layout({ onLogout }: LayoutProps) {
     onSyncRequested: syncData,
   });
 
+  const checkConnectivity = useCallback(async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      await fetch('/api/app/auth/salt', {
+        method: 'HEAD',
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      clearTimeout(timeoutId);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }, []);
+
+  // Monitorização de conectividade ativa com polling inteligente
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    let active = true;
+    let timerId: any = null;
+
+    const poll = async () => {
+      const reachable = await checkConnectivity();
+      if (!active) return;
+      
+      setIsOnline(reachable);
+
+      // 10s se offline, 30s se online
+      const interval = reachable ? 30000 : 10000;
+      timerId = setTimeout(poll, interval);
+    };
+
+    poll();
+
+    const handleOnline = async () => {
+      if (!active) return;
+      const reachable = await checkConnectivity();
+      if (!active) return;
+      setIsOnline(reachable);
+    };
+
+    const handleOffline = () => {
+      if (!active) return;
+      setIsOnline(false);
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
     return () => {
+      active = false;
+      if (timerId) clearTimeout(timerId);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [checkConnectivity]);
 
   // ── Sync ao ficar online ──────────────────────────────────────────────
   // Dispara apenas quando a transição online→offline→online ocorre.
@@ -230,9 +277,9 @@ export default function Layout({ onLogout }: LayoutProps) {
             </button>
           )}
           {isOnline && unsyncedCount === 0 && (
-            <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-emerald-900/40 border border-emerald-500/50 rounded-full text-xs text-emerald-400 font-medium">
-              <div className="w-2 h-2 rounded-full bg-emerald-500" />
-              Sincronização Ativa
+            <div className="flex items-center gap-1.5 px-2 md:px-3 py-1 bg-emerald-950/40 border border-emerald-500/30 rounded-full text-xs text-emerald-400 font-medium">
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">Sincronizado</span>
             </div>
           )}
 
