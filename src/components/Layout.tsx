@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, LogOut, Maximize, Minimize } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { triggerFullSync } from '../lib/sync';
 import { useAppRealtime } from '../lib/realtime';
 import PwaBanners from './PwaBanners';
+import { useTheme } from '../hooks/useTheme';
+import { toast } from '../lib/notifications';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Início' },
@@ -31,7 +33,7 @@ export default function Layout({ onLogout }: LayoutProps) {
   const [syncErrorMsg, setSyncErrorMsg] = useState<string | null>(null);
   const [syncNeedsAuth, setSyncNeedsAuth] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('drcae_theme') === 'dark');
+  const { theme, setTheme } = useTheme();
   const avatarRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
@@ -140,11 +142,17 @@ export default function Layout({ onLogout }: LayoutProps) {
     }
   };
 
-  const toggleTheme = () => {
-    const newDark = !isDark;
-    setIsDark(newDark);
-    localStorage.setItem('drcae_theme', newDark ? 'dark' : 'light');
-    document.documentElement.classList.toggle('dark', newDark);
+  const cycleTheme = () => {
+    if (theme === 'auto') {
+      setTheme('light');
+      toast.info('Tema definido para Claro');
+    } else if (theme === 'light') {
+      setTheme('dark');
+      toast.info('Tema definido para Escuro');
+    } else {
+      setTheme('auto');
+      toast.info('Tema definido para Automático');
+    }
   };
 
   return (
@@ -220,11 +228,23 @@ export default function Layout({ onLogout }: LayoutProps) {
 
           {/* Dark mode toggle */}
           <button
-            onClick={toggleTheme}
+            onClick={cycleTheme}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-            title={isDark ? 'Modo Claro' : 'Modo Escuro'}
+            title={
+              theme === 'auto'
+                ? 'Tema: Automático (clique para Claro)'
+                : theme === 'light'
+                ? 'Tema: Claro (clique para Escuro)'
+                : 'Tema: Escuro (clique para Automático)'
+            }
           >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === 'auto' ? (
+              <Laptop className="w-4 h-4" />
+            ) : theme === 'light' ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
           </button>
 
           {/* Avatar mobile (initials) — clique → logout directo */}

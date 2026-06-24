@@ -2,13 +2,23 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { ThemeProvider } from './hooks/useTheme.tsx';
 
 // Aplicar tema guardado antes do render para evitar flash
-const savedTheme = localStorage.getItem('drcae_theme') || 'light';
-document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+const savedTheme = localStorage.getItem('drcae_theme') || 'auto';
+if (savedTheme === 'dark') {
+  document.documentElement.classList.add('dark');
+} else if (savedTheme === 'light') {
+  document.documentElement.classList.remove('dark');
+} else {
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.classList.toggle('dark', systemDark);
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );

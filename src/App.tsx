@@ -18,7 +18,7 @@ import Equipe from './pages/Equipe';
 import PendentesPage from './pages/PendentesPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap } from 'lucide-react';
+import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap, Sun, Moon, Laptop } from 'lucide-react';
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { triggerFullSync } from './lib/sync';
@@ -26,8 +26,11 @@ import { useSyncState } from './lib/syncState';
 export { useSyncState };
 import NotificationContainer from './components/NotificationContainer';
 import { toast, customAlert } from './lib/notifications';
+import { useTheme } from './hooks/useTheme';
+import { cn } from './lib/utils';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
+  const { theme, setTheme } = useTheme();
   const [selectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
     return (localStorage.getItem('drcae_server_sync_profile') as 'economy' | 'standard' | 'maximum') || 'standard';
   });
@@ -38,8 +41,6 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-
 
   const stats = useLiveQuery(async () => {
     const firmas = await db.firmas.toArray();
@@ -255,40 +256,44 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 max-w-4xl mx-auto w-full">
 
       {/* CARD DE PERFIL DE SINCRONIZAÇÃO (atribuído pelo admin) */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50/50 p-4 border-b border-slate-200 flex items-center gap-2">
-          <Layers className="w-5 h-5 text-indigo-600" />
-          <h3 className="font-bold text-slate-800 text-sm">Perfil de Sincronização</h3>
-          <span className="ml-auto text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full uppercase tracking-wider">Atribuído pelo Admin</span>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Perfil de Sincronização</h3>
+          <span className="ml-auto text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">Atribuído pelo Admin</span>
         </div>
 
         <div className="p-5 space-y-4">
-          <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
             O perfil de sincronização é configurado centralmente pelo administrador do sistema e aplicado automaticamente a este dispositivo.
           </p>
 
           {/* Perfil activo - read-only */}
-          <div className={`p-4 rounded-xl border-2 flex items-center gap-4 ${
+          <div className={cn(
+            'p-4 rounded-xl border-2 flex items-center gap-4',
             selectedProfile === 'economy'
-              ? 'border-amber-400 bg-amber-50/40'
+              ? 'border-amber-400 bg-amber-50/40 dark:border-amber-500/80 dark:bg-amber-950/10'
               : selectedProfile === 'maximum'
-              ? 'border-emerald-500 bg-emerald-50/40'
-              : 'border-indigo-500 bg-indigo-50/40'
-          }`}>
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-              selectedProfile === 'economy' ? 'bg-amber-100' : selectedProfile === 'maximum' ? 'bg-emerald-100' : 'bg-indigo-100'
-            }`}>
-              <Layers className={`w-5 h-5 ${
-                selectedProfile === 'economy' ? 'text-amber-600' : selectedProfile === 'maximum' ? 'text-emerald-600' : 'text-indigo-600'
-              }`} />
+              ? 'border-emerald-500 bg-emerald-50/40 dark:border-emerald-600/80 dark:bg-emerald-950/10'
+              : 'border-indigo-500 bg-indigo-50/40 dark:border-indigo-650/80 dark:bg-indigo-950/10'
+          )}>
+            <div className={cn(
+              'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
+              selectedProfile === 'economy' ? 'bg-amber-100 dark:bg-amber-950/40' : selectedProfile === 'maximum' ? 'bg-emerald-100 dark:bg-emerald-950/40' : 'bg-indigo-100 dark:bg-indigo-950/40'
+            )}>
+              <Layers className={cn(
+                'w-5 h-5',
+                selectedProfile === 'economy' ? 'text-amber-600 dark:text-amber-450' : selectedProfile === 'maximum' ? 'text-emerald-600 dark:text-emerald-450' : 'text-indigo-600 dark:text-indigo-455'
+              )} />
             </div>
             <div className="flex-1">
-              <p className={`font-bold text-sm ${
-                selectedProfile === 'economy' ? 'text-amber-800' : selectedProfile === 'maximum' ? 'text-emerald-800' : 'text-indigo-800'
-              }`}>
+              <p className={cn(
+                'font-bold text-sm',
+                selectedProfile === 'economy' ? 'text-amber-800 dark:text-amber-300' : selectedProfile === 'maximum' ? 'text-emerald-800 dark:text-emerald-300' : 'text-indigo-800 dark:text-indigo-300'
+              )}>
                 {selectedProfile === 'economy' ? 'Mínimo / Económico' : selectedProfile === 'maximum' ? 'Offline Total / Máximo' : 'Padrão / Recomendado'}
               </p>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                 {selectedProfile === 'economy'
                   ? 'Poupança de dados — histórico de 15 dias'
                   : selectedProfile === 'maximum'
@@ -296,47 +301,49 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                   : 'Equilíbrio recomendado — histórico de 60 dias'}
               </p>
             </div>
-            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
-              selectedProfile === 'economy' ? 'bg-amber-100 text-amber-700' : selectedProfile === 'maximum' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
-            }`}>
+            <span className={cn(
+              'text-xs font-black px-2.5 py-1 rounded-full',
+              selectedProfile === 'economy' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : selectedProfile === 'maximum' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+            )}>
               {selectedProfile === 'economy' ? '~35%' : selectedProfile === 'maximum' ? '100%' : '~70%'}
             </span>
           </div>
 
           {/* Gráfico do nível de dados cacheado */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3 font-sans">
+          <div className="bg-slate-50 dark:bg-slate-800/20 p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-3 font-sans">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-700">Nível do Volume de Cache Ativo:</span>
-              <span className="font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+              <span className="font-bold text-slate-700 dark:text-slate-350">Nível do Volume de Cache Ativo:</span>
+              <span className="font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 px-2 py-0.5 rounded-md">
                 {selectedProfile === 'economy' ? '35% (Compacto)' : selectedProfile === 'standard' ? '70% (Recomendado)' : '100% (Total Histórico)'}
               </span>
             </div>
             {/* Barra de Progresso */}
-            <div className="w-full bg-slate-200/70 h-2.5 rounded-full overflow-hidden">
+            <div className="w-full bg-slate-200/70 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
               <div 
-                className={`h-full transition-all duration-500 rounded-full ${
+                className={cn(
+                  'h-full transition-all duration-500 rounded-full',
                   selectedProfile === 'economy' ? 'bg-amber-500 w-[35%]' : selectedProfile === 'standard' ? 'bg-indigo-600 w-[70%]' : 'bg-emerald-600 w-full'
-                }`}
+                )}
               />
             </div>
 
             {/* Configurações aplicadas reflexivas */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] text-slate-600 font-semibold border-t border-slate-200/50">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] text-slate-600 dark:text-slate-400 font-semibold border-t border-slate-200/50 dark:border-slate-800">
               <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Lista de Operadores</span>
-                <p className="text-indigo-950 font-bold bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-3xs">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Lista de Operadores</span>
+                <p className="text-indigo-950 dark:text-indigo-200 font-bold bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 shadow-3xs">
                   • 100% Completa (Sempre total)
                 </p>
               </div>
               <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Condições de Operadores</span>
-                <p className="text-slate-800 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Condições de Operadores</span>
+                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
                   • {selectedProfile === 'economy' ? 'Apenas ativos / com alertas' : selectedProfile === 'standard' ? 'Ativos, registados nos últimos 2 anos' : 'Todas as entidades registadas'}
                 </p>
               </div>
               <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Histórico de Visitas Retidas</span>
-                <p className="text-slate-800 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Histórico de Visitas Retidas</span>
+                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
                   • {selectedProfile === 'economy' ? 'Até 15 dias atrás' : selectedProfile === 'standard' ? 'Até 60 dias atrás' : 'Histórico Completo'}
                 </p>
               </div>
@@ -344,29 +351,72 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* CARD DE APARÊNCIA / TEMA */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Sun className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Aparência</h3>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+            Escolha o tema visual da aplicação. A opção automática adapta-se às configurações do seu dispositivo.
+          </p>
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { id: 'auto' as const, label: 'Auto', icon: Laptop, desc: 'Sistema' },
+              { id: 'light' as const, label: 'Claro', icon: Sun, desc: 'Light Mode' },
+              { id: 'dark' as const, label: 'Escuro', icon: Moon, desc: 'Dark Mode' },
+            ].map(({ id, label, icon: Icon, desc }) => {
+              const active = theme === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setTheme(id);
+                    toast.info(`Tema alterado para ${label}`);
+                  }}
+                  className={cn(
+                    'flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer text-center',
+                    active
+                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                      : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-700 dark:hover:text-slate-350'
+                  )}
+                >
+                  <Icon className="w-5 h-5 mb-1.5" />
+                  <span className="text-xs font-bold block">{label}</span>
+                  <span className="text-[10px] opacity-70 mt-0.5">{desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
       
       {/* storage details card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50/50 p-4 border-b border-slate-200 flex items-center gap-2">
-          <Disc className="w-5 h-5 text-indigo-600" />
-          <h3 className="font-bold text-slate-800 text-sm">Estado do Armazenamento e Cache</h3>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Disc className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Estado do Armazenamento e Cache</h3>
         </div>
         <div className="p-5 space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 rounded-xl border border-slate-100 gap-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-100 dark:border-slate-800 gap-4">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Ocupação em Disco (Estimativa de Dados)</span>
-              <span className="text-2xl font-black text-slate-900">{stats ? formatBytes(stats.bytes) : 'A calcular...'}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-0.5">Ocupação em Disco (Estimativa de Dados)</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white">{stats ? formatBytes(stats.bytes) : 'A calcular...'}</span>
             </div>
             <div className="flex gap-4">
-              <div className="text-center bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100 min-w-[100px]">
-                <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider block">Sincronizados (Cache)</span>
-                <span className="text-base font-extrabold text-emerald-950">
+              <div className="text-center bg-emerald-50 dark:bg-emerald-950/20 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30 min-w-[100px]">
+                <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-450 uppercase tracking-wider block">Sincronizados (Cache)</span>
+                <span className="text-base font-extrabold text-emerald-950 dark:text-emerald-200">
                   {stats ? (stats.syncedFirmas + stats.syncedVisitas + stats.syncedInfracoes + stats.syncedAnexos) : 0}
                 </span>
               </div>
-              <div className="text-center bg-orange-50 px-3 py-2 rounded-xl border border-orange-100 min-w-[100px]">
-                <span className="text-[9px] font-bold text-orange-800 uppercase tracking-wider block">Novos (Por Submeter)</span>
-                <span className="text-base font-extrabold text-orange-950">
+              <div className="text-center bg-orange-50 dark:bg-orange-950/20 px-3 py-2 rounded-xl border border-orange-100 dark:border-orange-900/30 min-w-[100px]">
+                <span className="text-[9px] font-bold text-orange-800 dark:text-orange-455 uppercase tracking-wider block">Novos (Por Submeter)</span>
+                <span className="text-base font-extrabold text-orange-950 dark:text-orange-200">
                   {stats ? (stats.unsyncedFirmas + stats.unsyncedVisitas + stats.unsyncedInfracoes + stats.unsyncedAnexos) : 0}
                 </span>
               </div>
@@ -374,54 +424,52 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Operadores</span>
-                <span className="text-lg font-black text-slate-800">{stats?.totalFirmas || 0}</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Operadores</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalFirmas || 0}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-slate-500 font-bold border-t border-slate-100 mt-2 pt-1.5">
-                <span className="text-emerald-600">Sinc: {stats?.syncedFirmas || 0}</span>
-                <span className="text-orange-600">Novos: {stats?.unsyncedFirmas || 0}</span>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedFirmas || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novos: {stats?.unsyncedFirmas || 0}</span>
               </div>
             </div>
 
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Fiscalizações</span>
-                <span className="text-lg font-black text-slate-800">{stats?.totalVisitas || 0}</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Fiscalizações</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalVisitas || 0}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-slate-500 font-bold border-t border-slate-100 mt-2 pt-1.5">
-                <span className="text-emerald-600">Sinc: {stats?.syncedVisitas || 0}</span>
-                <span className="text-orange-600">Novas: {stats?.unsyncedVisitas || 0}</span>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedVisitas || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedVisitas || 0}</span>
               </div>
             </div>
 
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Infrações</span>
-                <span className="text-lg font-black text-slate-800">{stats?.totalInfracoes || 0}</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Infrações</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalInfracoes || 0}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-slate-500 font-bold border-t border-slate-100 mt-2 pt-1.5">
-                <span className="text-emerald-600">Sinc: {stats?.syncedInfracoes || 0}</span>
-                <span className="text-orange-600">Novas: {stats?.unsyncedInfracoes || 0}</span>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedInfracoes || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedInfracoes || 0}</span>
               </div>
             </div>
 
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Anexos / Imagens</span>
-                <span className="text-lg font-black text-slate-800">{stats?.totalAnexos || 0}</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Anexos / Imagens</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalAnexos || 0}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-slate-500 font-bold border-t border-slate-100 mt-2 pt-1.5">
-                <span className="text-emerald-600">Sinc: {stats?.syncedAnexos || 0}</span>
-                <span className="text-orange-600">Novas: {stats?.unsyncedAnexos || 0}</span>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedAnexos || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedAnexos || 0}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-
 
       {/* ═══════════════════════════════════════════════════════════════
            PAINEL DE SINCRONIZAÇÃO — estado em tempo real + acções
@@ -452,28 +500,29 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
           : (syncState.phase === 'pushing' ? 0 : 100);
 
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
             {/* Cabeçalho do painel */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-700 p-4 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-slate-800 to-slate-700 dark:from-slate-900 dark:to-slate-850 p-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
                   <Activity className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm">Centro de Sincronização</h3>
-                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">Monitor de dados offline ↔ servidor</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5">Monitor de dados offline ↔ servidor</p>
                 </div>
               </div>
               <button
                 onClick={handleManualSync}
                 disabled={isSyncing || isManualSyncing}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+                className={cn(
+                  'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer',
                   isSyncing || isManualSyncing
-                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    ? 'bg-slate-600 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                     : 'bg-emerald-500 hover:bg-emerald-400 text-white active:scale-95'
-                }`}
+                )}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${(isSyncing || isManualSyncing) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={cn('w-3.5 h-3.5', (isSyncing || isManualSyncing) && 'animate-spin')} />
                 {isSyncing || isManualSyncing ? 'A sincronizar...' : 'Sincronizar Agora'}
               </button>
             </div>
@@ -482,10 +531,10 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
               {/* Estado geral */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusDot}`} />
-                  <span className="text-sm font-semibold text-slate-700">{phaseLabel}</span>
+                  <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', statusDot)} />
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{phaseLabel}</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
                   <Clock className="w-3.5 h-3.5" />
                   {isSyncing && isManualSyncing
                     ? `${elapsedSecs}s`
@@ -497,48 +546,49 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
               {isSyncing && (
                 <div className="space-y-3">
                   {/* Upload */}
-                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                  <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-3.5 border border-slate-100 dark:border-slate-800">
                     <div className="flex items-center justify-between mb-2.5">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400">
                         <ArrowUpCircle className="w-4 h-4 text-blue-500" />
                         Upload para servidor
                       </div>
-                      <span className="text-[11px] font-bold text-blue-600">
+                      <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">
                         {syncState.phase === 'pushing'
                           ? syncState.pushTotal > 0 ? `${syncState.pushDone} / ${syncState.pushTotal}` : 'A preparar...'
                           : `${syncState.pushDone} enviados`}
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
+                        className={cn(
+                          'h-full rounded-full transition-all duration-500',
                           syncState.phase === 'pushing' ? 'bg-blue-500' : 'bg-emerald-500'
-                        }`}
+                        )}
                         style={{ width: `${syncState.phase === 'pushing' ? pushProgress : 100}%` }}
                       />
                     </div>
                     {syncState.phase === 'pushing' && syncState.pushTotal === 0 && (
-                      <div className="mt-1.5 w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      <div className="mt-1.5 w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
                         <div className="h-full bg-blue-400 rounded-full w-1/3 animate-pulse" />
                       </div>
                     )}
                   </div>
 
                   {/* Download */}
-                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                  <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-3.5 border border-slate-100 dark:border-slate-800">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400">
                         <ArrowDownCircle className="w-4 h-4 text-indigo-500" />
                         Download do servidor
                       </div>
-                      <span className="text-[11px] font-bold text-slate-500">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
                         {syncState.phase === 'pulling' ? `${syncState.pullCount} recebidos` : 'A aguardar...'}
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
                       {syncState.phase === 'pulling'
                         ? <div className="h-full bg-indigo-400 rounded-full w-2/3 animate-pulse" />
-                        : <div className="h-full bg-slate-300 rounded-full w-0" />
+                        : <div className="h-full bg-slate-300 dark:bg-slate-800 rounded-full w-0" />
                       }
                     </div>
                   </div>
@@ -547,32 +597,32 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
               {/* ── Por sincronizar (Upload pendente) — só quando idle e há dados ── */}
               {!isSyncing && unsyncedTotal > 0 && (
-                <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                <div className="bg-orange-50 dark:bg-orange-950/20 rounded-xl p-4 border border-orange-100 dark:border-orange-900/30">
                   <div className="flex items-center gap-2 mb-3">
                     <ArrowUpCircle className="w-4 h-4 text-orange-500" />
-                    <span className="text-xs font-bold text-orange-700">Por enviar ao servidor</span>
+                    <span className="text-xs font-bold text-orange-700 dark:text-orange-400">Por enviar ao servidor</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                     {[
-                      { label: 'Operadores', count: stats?.unsyncedFirmas ?? 0, color: 'bg-indigo-100 text-indigo-700' },
-                      { label: 'Fiscalizações', count: stats?.unsyncedVisitas ?? 0, color: 'bg-blue-100 text-blue-700' },
-                      { label: 'Infrações', count: stats?.unsyncedInfracoes ?? 0, color: 'bg-orange-100 text-orange-700' },
-                      { label: 'Anexos', count: stats?.unsyncedAnexos ?? 0, color: 'bg-purple-100 text-purple-700' },
+                      { label: 'Operadores', count: stats?.unsyncedFirmas ?? 0, color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400' },
+                      { label: 'Fiscalizações', count: stats?.unsyncedVisitas ?? 0, color: 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' },
+                      { label: 'Infrações', count: stats?.unsyncedInfracoes ?? 0, color: 'bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400' },
+                      { label: 'Anexos', count: stats?.unsyncedAnexos ?? 0, color: 'bg-purple-100 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400' },
                     ].map(({ label, count, color }) => (
-                      <div key={label} className={`rounded-lg px-2.5 py-2 text-center ${color}`}>
+                      <div key={label} className={cn('rounded-lg px-2.5 py-2 text-center', color)}>
                         <span className="text-base font-black block">{count}</span>
                         <span className="text-[9px] font-bold uppercase tracking-wide opacity-80">{label}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-orange-200/60 pt-2.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 border-t border-orange-200/60 dark:border-orange-900/40 pt-2.5">
                     <div className="flex items-center gap-1.5">
                       <HardDrive className="w-3.5 h-3.5 text-orange-400" />
-                      <span>Tamanho estimado: <strong className="text-slate-700">{formatBytes(unsyncedBytes)}</strong></span>
+                      <span>Tamanho estimado: <strong className="text-slate-700 dark:text-slate-300">{formatBytes(unsyncedBytes)}</strong></span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-orange-400" />
-                      <span>ETA: <strong className="text-slate-700">{estimateEta(unsyncedBytes, unsyncedTotal)}</strong></span>
+                      <span>ETA: <strong className="text-slate-700 dark:text-slate-300">{estimateEta(unsyncedBytes, unsyncedTotal)}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -580,68 +630,68 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
               {/* ── Tudo sincronizado (sem pendentes, idle) ── */}
               {!isSyncing && unsyncedTotal === 0 && syncState.phase !== 'error' && syncState.phase !== 'needs-auth' && (
-                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 flex items-center gap-3">
+                <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-xl p-4 border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                   <div>
-                    <p className="text-sm font-bold text-emerald-800">Dados actualizados</p>
-                    <p className="text-xs text-emerald-600 font-medium">Todos os registos locais foram enviados ao servidor.</p>
+                    <p className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Dados actualizados</p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-500 font-medium">Todos os registos locais foram enviados ao servidor.</p>
                   </div>
                 </div>
               )}
 
               {/* ── Erro de auth ── */}
               {syncState.phase === 'needs-auth' && (
-                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 flex items-center gap-3">
+                <div className="bg-amber-50 dark:bg-amber-950/20 rounded-xl p-4 border border-amber-200 dark:border-amber-900/30 flex items-center gap-3">
                   <WifiOff className="w-5 h-5 text-amber-500 shrink-0" />
                   <div>
-                    <p className="text-sm font-bold text-amber-800">Sessão expirada</p>
-                    <p className="text-xs text-amber-700 font-medium">Os dados locais estão seguros. Re-autentique-se para retomar a sincronização.</p>
+                    <p className="text-sm font-bold text-amber-800 dark:text-amber-400">Sessão expirada</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-550 font-medium">Os dados locais estão seguros. Re-autentique-se para retomar a sincronização.</p>
                   </div>
                 </div>
               )}
 
               {/* ── Erro de rede/servidor ── */}
               {syncState.phase === 'error' && syncState.errors.length > 0 && (
-                <div className="bg-red-50 rounded-xl p-3.5 border border-red-200 flex items-start gap-3">
+                <div className="bg-red-50 dark:bg-red-950/20 rounded-xl p-3.5 border border-red-200 dark:border-red-900/30 flex items-start gap-3">
                   <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-xs font-bold text-red-700 mb-1">Erro na sincronização</p>
-                    <p className="text-[11px] text-red-600 font-medium leading-relaxed">{syncState.errors[0]}</p>
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1">Erro na sincronização</p>
+                    <p className="text-[11px] text-red-600 dark:text-red-500 font-medium leading-relaxed">{syncState.errors[0]}</p>
                   </div>
                 </div>
               )}
 
               {/* ── Resultado da última sync completa ── */}
               {(syncState.lastPushDone !== undefined || syncState.lastPullCount !== undefined) && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Última sincronização completa</span>
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2 border-b border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Última sincronização completa</span>
                   </div>
-                  <div className="grid grid-cols-3 divide-x divide-slate-100">
+                  <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-850">
                     <div className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <ArrowUpCircle className="w-3.5 h-3.5 text-blue-500" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Enviados</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Enviados</span>
                       </div>
-                      <span className="text-lg font-black text-slate-800">{syncState.lastPushDone ?? 0}</span>
+                      <span className="text-lg font-black text-slate-800 dark:text-slate-200">{syncState.lastPushDone ?? 0}</span>
                     </div>
                     <div className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <ArrowDownCircle className="w-3.5 h-3.5 text-indigo-500" />
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recebidos</span>
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Recebidos</span>
                       </div>
-                      <span className="text-lg font-black text-slate-800">{syncState.lastPullCount ?? 0}</span>
+                      <span className="text-lg font-black text-slate-800 dark:text-slate-200">{syncState.lastPullCount ?? 0}</span>
                     </div>
                     <div className="p-3 text-center">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         {(syncState.lastPushErrors ?? 0) > 0
                           ? <XCircle className="w-3.5 h-3.5 text-red-500" />
                           : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                           {(syncState.lastPushErrors ?? 0) > 0 ? 'Erros' : 'Duração'}
                         </span>
                       </div>
-                      <span className={`text-lg font-black ${(syncState.lastPushErrors ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                      <span className={cn('text-lg font-black', (syncState.lastPushErrors ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-200')}>
                         {(syncState.lastPushErrors ?? 0) > 0 ? syncState.lastPushErrors : formatDurationMs(syncState.lastDurationMs)}
                       </span>
                     </div>
@@ -653,65 +703,65 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
         );
       })()}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-700">
-               <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+         <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
+               <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-950/40 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <DownloadCloud className="w-5 h-5" />
                </div>
                <div>
-                  <h3 className="font-bold text-gray-900">Exportar Alterações</h3>
-                  <p className="text-xs text-gray-500">Gerar ficheiro de backup (PEN)</p>
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100">Exportar Alterações</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Gerar ficheiro de backup (PEN)</p>
                </div>
             </div>
-            <button onClick={exportData} className="text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200">
+            <button onClick={exportData} className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer">
                Exportar
             </button>
          </div>
 
-         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-700">
-               <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-600">
+         <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
+               <div className="w-10 h-10 bg-teal-100 dark:bg-teal-950/40 rounded-full flex items-center justify-center text-teal-600 dark:text-teal-400">
                   <UploadCloud className="w-5 h-5" />
                </div>
                <div>
-                  <h3 className="font-bold text-gray-900">Carregar Atualizações</h3>
-                  <p className="text-xs text-gray-500">Importar ficheiro offline (.pen, .json)</p>
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100">Carregar Atualizações</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Importar ficheiro offline (.pen, .json)</p>
                </div>
             </div>
-            <label className="text-sm font-bold text-teal-600 hover:bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-200 cursor-pointer">
+            <label className="text-sm font-bold text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/30 px-3 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 cursor-pointer">
                Carregar
                <input type="file" accept=".pen,.json" onChange={importData} className="hidden" />
             </label>
          </div>
 
-         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-700">
-               <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+         <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
+               <div className="w-10 h-10 bg-orange-100 dark:bg-orange-950/40 rounded-full flex items-center justify-center text-orange-600 dark:text-orange-400">
                   <HardDrive className="w-5 h-5" />
                </div>
                <div>
-                  <h3 className="font-bold text-gray-900">Limpar Cache</h3>
-                  <p className="text-xs text-gray-400">Remove apenas registos já submetidos salvos no servidor</p>
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100">Limpar Cache</h3>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">Remove apenas registos já submetidos salvos no servidor</p>
                </div>
             </div>
              {/* PIN CONFIRMATION MODAL FOR CLEAR CACHE */}
              {showPinModal && (
                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans animate-in fade-in duration-200">
-                 <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
+                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-sm w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
                    <div className="flex flex-col items-center text-center space-y-2">
-                     <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-1">
+                     <div className="w-12 h-12 bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mb-1">
                        <ShieldCheck className="w-6 h-6" />
                      </div>
-                     <h3 className="font-bold text-lg text-slate-900">Confirmação de Segurança</h3>
-                     <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                     <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100">Confirmação de Segurança</h3>
+                     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
                        A limpeza de cache elimina os dados locais já submetidos. Introduza a sua palavra-passe para prosseguir.
                      </p>
                    </div>
 
                    <form onSubmit={handleClearPinSubmit} className="space-y-4">
                      <div className="space-y-1">
-                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block pl-1">Palavra-passe do Inspetor</label>
+                       <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block pl-1">Palavra-passe do Inspetor</label>
                        <input
                          type="password"
                          placeholder="Digite a palavra-passe"
@@ -720,7 +770,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                            setPinInput(e.target.value);
                            setPinError('');
                          }}
-                         className="w-full text-center tracking-widest text-lg font-black bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 rounded-xl p-3 text-slate-800"
+                         className="w-full text-center tracking-widest text-lg font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 rounded-xl p-3 text-slate-800 dark:text-slate-100"
                          autoFocus
                        />
                        {pinError && (
@@ -734,14 +784,14 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                        <button
                          type="button"
                          onClick={() => setShowPinModal(false)}
-                         className="flex-1 py-3 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                         className="flex-1 py-3 text-xs font-bold text-slate-600 dark:text-slate-350 bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                        >
                          Cancelar
                        </button>
                        <button
                          type="submit"
                          disabled={pinInput.length === 0}
-                         className="flex-1 py-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:bg-slate-400 rounded-xl transition-colors shadow-sm"
+                         className="flex-1 py-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:bg-slate-400 dark:disabled:bg-slate-800 rounded-xl transition-colors shadow-sm cursor-pointer"
                        >
                          Confirmar
                        </button>
@@ -751,19 +801,19 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                </div>
              )}
 
-            <button onClick={clearData} className="text-sm font-bold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 shadow-sm transition-colors">
+            <button onClick={clearData} className="text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 shadow-sm transition-colors cursor-pointer">
                Limpar Cache
             </button>
          </div>
 
          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-700">
-               <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
+            <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
+               <div className="w-10 h-10 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-gray-600 dark:text-slate-400">
                   <LogOut className="w-5 h-5" />
                </div>
                <div>
-                  <h3 className="font-bold text-gray-900">Sessão</h3>
-                  <p className="text-xs text-gray-500">
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100">Sessão</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
                     {(() => {
                       try {
                         const info = JSON.parse(localStorage.getItem('drcae_officer_info') || 'null');
@@ -773,7 +823,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                   </p>
                </div>
             </div>
-            <button onClick={onLogout} className="text-sm font-bold text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+            <button onClick={onLogout} className="text-sm font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 cursor-pointer">
                Sair
             </button>
          </div>
