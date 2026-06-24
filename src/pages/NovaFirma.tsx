@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Plus, Trash2, Check, ChevronRight, AlertTriangle, Users } from 'lucide-react';
 import { db, generateId, AtividadeEconomica } from '../db/db';
 import { cn } from '../lib/utils';
+import { toast } from '../lib/notifications';
 
 const DISTRITOS = ['Água Grande', 'Cantagalo', 'Caué', 'Lembá', 'Lobata', 'Mé-Zóchi', 'RAP'];
 const NACIONALIDADES = ['Santomense', 'Angolana', 'Cabo-verdiana', 'Galega', 'Chinesa', 'Portuguesa', 'Brasileira', 'Outra'];
@@ -112,7 +113,7 @@ export default function NovaFirma() {
   };
 
   const handleSubmit = async () => {
-    if (!name || (!isInformal && !nif)) return alert('Preencha os campos obrigatórios (Nome e NIF).');
+    if (!name || (!isInformal && !nif)) return toast.error('Preencha os campos obrigatórios (Nome e NIF).');
     
     const newFirmaId = generateId();
     await db.firmas.add({
@@ -145,7 +146,7 @@ export default function NovaFirma() {
   };
 
   const nextStep = () => {
-    if (step === 1 && (!name || (!isInformal && !nif))) return alert('Preencha os campos obrigatórios (Nome e NIF).');
+    if (step === 1 && (!name || (!isInformal && !nif))) return toast.error('Preencha os campos obrigatórios (Nome e NIF).');
     if (step < 4) setStep(step + 1);
     else handleSubmit();
   };

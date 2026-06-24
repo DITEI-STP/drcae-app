@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { ArrowLeft, MapPin, Phone, Mail, User, ShieldAlert, Compass, Check, Crosshair, AlertTriangle, Map } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, Mail, User, ShieldAlert, Compass, Check, Crosshair, AlertTriangle, Map as MapIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
+import { toast, customAlert } from '../lib/notifications';
 
 export default function FirmaDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,9 +38,78 @@ export default function FirmaDetail() {
     return allInfracoes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [visitas]);
 
+  const recomendacoesAberto = useLiveQuery(async () => {
+    if (!visitas || visitas.length === 0) return [];
+    
+    // Sort visits by date/time ascending to trace chronologically
+    const sortedVisitas = [...visitas].sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
+      const dateB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+      return dateA - dateB;
+    });
+
+    // Map to track the status of each recommendation: key is "visitaId-text"
+    const recMap = new Map<string, {
+      text: string;
+      visitaOrigemId: string;
+      dataOrigem: string;
+      equipaOrigem: string[];
+      atendida: boolean;
+    }>();
+
+    for (const v of sortedVisitas) {
+      // 1. Process new recommendations issued in this visit
+      if (v.recomendacoes) {
+        for (const rec of v.recomendacoes) {
+          const key = `${v.id}-${rec}`;
+          recMap.set(key, {
+            text: rec,
+            visitaOrigemId: v.id!,
+            dataOrigem: v.date,
+            equipaOrigem: v.technicians || [],
+            atendida: false
+          });
+        }
+      }
+
+      // 2. Process evaluations of past recommendations in this visit
+      if (v.recomendacoesHistoricas) {
+        for (const rh of v.recomendacoesHistoricas) {
+          const key = `${rh.visitaOrigemId}-${rh.text}`;
+          if (recMap.has(key)) {
+            const current = recMap.get(key)!;
+            if (rh.atendida !== undefined && rh.atendida !== null) {
+              recMap.set(key, {
+                ...current,
+                atendida: rh.atendida
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Filter to only return the ones that are NOT resolved (atendida === false)
+    const recs: {
+      text: string;
+      visitaOrigemId: string;
+      dataOrigem: string;
+      equipaOrigem: string[];
+      atendida: boolean;
+    }[] = [];
+
+    recMap.forEach((val) => {
+      recs.push(val);
+    });
+
+    return recs
+      .filter(r => !r.atendida)
+      .sort((a, b) => new Date(b.dataOrigem).getTime() - new Date(a.dataOrigem).getTime());
+  }, [visitas]);
+
   const handleCapturePonto = () => {
     if (!navigator.geolocation) {
-      alert('Geolocalização não é suportada por este dispositivo.');
+      toast.error('Geolocalização não é suportada por este dispositivo.');
       return;
     }
     setIsCapturing(true);
@@ -76,7 +146,7 @@ export default function FirmaDetail() {
       },
       (error) => {
         setIsCapturing(false);
-        alert('Erro ao capturar as coordenadas de GPS. Por favor, conceda permissão de localização.');
+        toast.error('Erro ao capturar as coordenadas de GPS. Por favor, conceda permissão de localização.');
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -157,7 +227,7 @@ export default function FirmaDetail() {
              <button 
                 onClick={() => {
                    if (!canEditFirma()) {
-                      alert('Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
+                      customAlert.warning('Operação Bloqueada', 'Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
                       return;
                    }
                    setSelectedTarget('firma');
@@ -179,7 +249,7 @@ export default function FirmaDetail() {
                 onClick={() => navigate('/mapa', { state: { selectedFirmaId: firma.id } })}
                 className="col-span-2 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/10 transition-colors uppercase tracking-wide flex items-center justify-center gap-2"
              >
-                <Map className="w-4 h-4 text-emerald-400" />
+                <MapIcon className="w-4 h-4 text-emerald-400" />
                 Visualizar no Mapa Geral
              </button>
           </div>
@@ -239,7 +309,7 @@ export default function FirmaDetail() {
                               className="text-[10px] text-emerald-700 hover:text-emerald-950 font-mono flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-200 transition-colors shadow-3xs"
                               title="Ver rota e localização desta atividade no mapa geral"
                            >
-                              <Map className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                              <MapIcon className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
                               <span>{ativ.geolocation.lat.toFixed(5)}, {ativ.geolocation.lng.toFixed(5)}</span>
                            </button>
                         ) : (
@@ -251,7 +321,7 @@ export default function FirmaDetail() {
                         <button 
                            onClick={() => {
                               if (!canEditFirma()) {
-                                 alert('Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
+                                 customAlert.warning('Operação Bloqueada', 'Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
                                  return;
                               }
                               setSelectedTarget(ativ.id || 'firma');
@@ -293,6 +363,30 @@ export default function FirmaDetail() {
                         )}>{inf.severity}</span>
                      </div>
                      <p className="text-xs text-slate-500 mt-1">Data: {inf.date}</p>
+                  </li>
+               ))}
+             </ul>
+           </div>
+        )}
+
+        {recomendacoesAberto && recomendacoesAberto.length > 0 && (
+           <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-200 bg-amber-50/20 font-sans space-y-4">
+             <div className="flex items-center justify-between border-b border-amber-100 pb-2">
+                <h3 className="font-bold text-amber-900 flex items-center gap-1.5">
+                   <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 animate-pulse" />
+                   Recomendações em Aberto ({recomendacoesAberto.length})
+                </h3>
+             </div>
+             <ul className="space-y-3 mt-3">
+               {recomendacoesAberto.map((rec, i) => (
+                  <li key={i} className="text-xs bg-white p-3 rounded-xl border border-amber-100/70 text-slate-700 leading-relaxed shadow-3xs flex gap-2">
+                     <span className="text-amber-500 font-extrabold">•</span>
+                     <div className="flex-1">
+                        <p className="font-semibold text-slate-850">{rec.text}</p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                           Emitida em: {rec.dataOrigem} por {rec.equipaOrigem.join(', ')}
+                        </p>
+                     </div>
                   </li>
                ))}
              </ul>

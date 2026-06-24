@@ -6,6 +6,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, MapPin, Camera, Image as ImageIcon, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { toast } from '../lib/notifications';
+import { generateOfflineCode } from '../lib/offlineCode';
 import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
 import CameraCapture from '../components/CameraCapture';
 
@@ -167,20 +169,49 @@ export default function NovaVisita() {
   };
 
   // Carregar produtos de cesta básica quando firma é selecionada
+  // Tenta cache local primeiro quando offline; guarda no cache quando online
   useEffect(() => {
     if (!firmaId || !firmas) { setSupplyProducts([]); setSupplyStatus('none'); return; }
     const firma = firmas.find(f => f.id === firmaId);
-    if (!firma || !navigator.onLine) { setSupplyStatus('none'); return; }
+    if (!firma) { setSupplyStatus('none'); return; }
+
+    const tryCache = async (): Promise<boolean> => {
+      try {
+        const cached = await db.table('metadata').get(`supply_${firma.id!}`);
+        if (cached?.value && Array.isArray(cached.value) && cached.value.length > 0) {
+          setSupplyProducts(cached.value);
+          setSupplyStatus('active');
+          return true;
+        }
+      } catch { /* sem cache */ }
+      return false;
+    };
+
+    if (!navigator.onLine) {
+      // Offline — usar apenas cache local
+      tryCache().then(found => { if (!found) setSupplyStatus('none'); });
+      return;
+    }
+
     setSupplyStatus('loading');
     import('../lib/api').then(api => {
       api.getOperatorSupply(firma.id!).then(res => {
         if (res.bookStatus === 'active' && res.products.length > 0) {
           setSupplyProducts(res.products);
           setSupplyStatus('active');
+          // Guardar no cache para uso offline
+          db.table('metadata').put({
+            key: `supply_${firma.id!}`,
+            value: res.products,
+          }).catch(() => {});
         } else {
           setSupplyStatus('none');
         }
-      }).catch(() => setSupplyStatus('none'));
+      }).catch(async () => {
+        // Falha de rede — tentar cache local
+        const found = await tryCache();
+        if (!found) setSupplyStatus('none');
+      });
     });
   }, [firmaId, firmas]);
 
@@ -255,6 +286,9 @@ export default function NovaVisita() {
 
   const handleSubmit = async () => {
     const visitaId = generateId();
+    const offlineCode = await generateOfflineCode();
+    const currentRegistrationDate = format(new Date(), 'yyyy-MM-dd');
+    const currentRegistrationTime = format(new Date(), 'HH:mm'); // HH:mm — sem segundos para compatibilidade com o backend
     
     let status = 'Regularizado';
     if (infracoes.length > 0) {
@@ -301,9 +335,10 @@ export default function NovaVisita() {
 
     const visita: Visita = {
       id: visitaId,
+      offlineCode,
       firmaId,
-      date,
-      time,
+      date: currentRegistrationDate,
+      time: currentRegistrationTime,
       technicians,
       status,
       atividadeEconomica,
@@ -369,6 +404,7 @@ export default function NovaVisita() {
       await p;
     }
 
+    toast.success(`Fiscalização ${offlineCode} guardada localmente.`);
     navigate(`/visitas/${visitaId}`, { replace: true });
   };
 
@@ -769,48 +805,12 @@ export default function NovaVisita() {
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
              
-             {/* Data e Hora */}
-             <div className="space-y-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-3">
-                   <CheckCircle className="w-5 h-5 text-indigo-600" />
-                   <h3 className="font-bold text-base text-slate-800">1. Agendamento & Registo</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Data da Vistoria</label>
-                      <input 
-                         type="date" 
-                         value={date}
-                         onChange={e => setDate(e.target.value)}
-                         className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-sm font-semibold text-slate-800"
-                      />
-                   </div>
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Hora da Entrada</label>
-                      <input 
-                         type="time" 
-                         value={time}
-                         onChange={e => setTime(e.target.value)}
-                         className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-sm font-semibold text-slate-800"
-                      />
-                   </div>
-                </div>
-
-                {location && (
-                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col items-center justify-center border-dashed gap-1">
-                      <MapPin className="w-5 h-5 text-indigo-500" />
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Coordenadas de Ingressos do Agente</p>
-                      <p className="text-xs text-slate-600 font-mono font-bold">Lat: {location.lat.toFixed(5)} | Lng: {location.lng.toFixed(5)}</p>
-                   </div>
-                )}
-             </div>
-
              {/* Equipa de Fiscalização */}
              <div className="space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="space-y-1">
                    <div className="flex items-center gap-2 mb-1">
                       <Users className="w-5 h-5 text-indigo-600" />
-                      <h3 className="font-bold text-base text-slate-800">2. Confirmar Equipa de Fiscalização</h3>
+                      <h3 className="font-bold text-base text-slate-800">Confirmar Equipa de Fiscalização</h3>
                    </div>
                    <p className="text-xs text-slate-500 font-medium font-sans">
                       Confirme os agentes escalados para esta ação. É obrigatória a presença de pelo menos 1 fiscal.
@@ -873,7 +873,7 @@ export default function NovaVisita() {
                                setNewTechName('');
                             }
                          }}
-                         className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                       >
                         Adicionar
                       </button>
@@ -881,11 +881,19 @@ export default function NovaVisita() {
                    <p className="text-[10px] text-slate-400 font-medium pl-1">As alterações aplicam-se apenas para este registo.</p>
                 </div>
              </div>
+
+             {location && (
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-1.5 text-center">
+                   <MapPin className="w-5 h-5 text-indigo-500 animate-bounce" />
+                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Coordenadas de Ingressos do Agente</p>
+                   <p className="text-xs text-slate-700 font-mono font-bold">Lat: {location.lat.toFixed(5)} | Lng: {location.lng.toFixed(5)}</p>
+                </div>
+             )}
           </div>
         )}
 
-        {/* STEP 3 */}
-        {step === 3 && (
+        {/* STEP 4 (Infrações) */}
+        {step === 4 && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
              <div className="bg-white p-4 rounded-xl border border-slate-200 dark:bg-slate-900 dark:border-slate-700 shadow-sm shrink-0">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 pl-1">Pesquisar Catálogo de Infrações</label>
@@ -1011,8 +1019,8 @@ export default function NovaVisita() {
           </div>
         )}
 
-        {/* STEP 4 */}
-        {step === 4 && (
+        {/* STEP 3 (Recomendações) */}
+        {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
              
              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
@@ -1543,7 +1551,7 @@ export default function NovaVisita() {
                                if (anx.file.type.startsWith('image/')) {
                                   setSelectedPreview(anx.url);
                                } else {
-                                  alert(`Ficheiro de tipo ${anx.file.type || 'desconhecido'}: ${anx.file.name}`);
+                                  toast.info(`Ficheiro de tipo ${anx.file.type || 'desconhecido'}: ${anx.file.name}`);
                                }
                             }}
                             className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:border-indigo-400 hover:scale-105 transition-all shadow-3xs group"

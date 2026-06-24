@@ -28,6 +28,7 @@ export default function Layout({ onLogout }: LayoutProps) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncErrorMsg, setSyncErrorMsg] = useState<string | null>(null);
+  const [syncNeedsAuth, setSyncNeedsAuth] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [isDark, setIsDark] = useState(() => localStorage.getItem('drcae_theme') === 'dark');
   const avatarRef = useRef<HTMLDivElement>(null);
@@ -72,8 +73,16 @@ export default function Layout({ onLogout }: LayoutProps) {
   const syncData = async () => {
     setIsSyncing(true);
     setSyncErrorMsg(null);
+    setSyncNeedsAuth(false);
     try {
-      await triggerFullSync();
+      const result = await triggerFullSync();
+      if (result.needsAuth) {
+        setSyncNeedsAuth(true);
+      } else if (result.errors && result.errors.length > 0) {
+        // Erros de rejeição pelo servidor (ex: operador não encontrado, data inválida)
+        console.error('[drcae] Erros de sincronização do servidor:', result.errors);
+        setSyncErrorMsg(`${result.errors.length} registo(s) rejeitado(s) pelo servidor. Verifique a consola para detalhes.`);
+      }
     } catch (err) {
       setSyncErrorMsg('Falha ao sincronizar. Será tentado novamente quando a ligação for restaurada.');
       console.error('[drcae] Falha ao sincronizar:', err);
@@ -123,6 +132,17 @@ export default function Layout({ onLogout }: LayoutProps) {
   return (
     <div className="flex flex-col h-screen bg-[#F5F7FA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 overflow-hidden font-sans">
       <PwaBanners />
+      {syncNeedsAuth && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-amber-600 text-white text-xs font-medium shrink-0">
+          <span>Dados guardados localmente. Sessão inativa — inicie sessão para sincronizar.</span>
+          <button
+            onClick={() => { setSyncNeedsAuth(false); onLogout(); }}
+            className="px-2 py-0.5 rounded bg-amber-800/60 hover:bg-amber-800 transition-colors shrink-0 whitespace-nowrap"
+          >
+            Re-autenticar
+          </button>
+        </div>
+      )}
       {syncErrorMsg && (
         <div className="flex items-center justify-between gap-3 px-4 py-2 bg-red-700 text-white text-xs font-medium shrink-0">
           <span>{syncErrorMsg}</span>

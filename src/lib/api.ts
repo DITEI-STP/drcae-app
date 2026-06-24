@@ -1,5 +1,15 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
 
+// Erro específico para falhas de autenticação durante sync background.
+// Ao contrário de um 401 em operações explícitas do utilizador, este erro
+// NÃO deve fazer logout — os dados locais estão seguros e o sync tentará novamente.
+export class AuthSyncError extends Error {
+  constructor() {
+    super('AUTH_SYNC_EXPIRED');
+    this.name = 'AuthSyncError';
+  }
+}
+
 export function getJwtToken(): string | null {
   return sessionStorage.getItem('drcae_jwt');
 }
@@ -22,11 +32,13 @@ export function getDeviceId(): string {
   return deviceId;
 }
 
-// Wrapper fetch com injeção de JWT e tratamento automático de expiração (401)
-async function request(path: string, options: RequestInit = {}): Promise<any> {
+// Wrapper fetch com injeção de JWT e tratamento automático de expiração (401).
+// silent=true: usado pelo sync background — se o refresh falhar, lança AuthSyncError
+// em vez de emitir auth-expired, para não fazer logout enquanto há dados locais por sincronizar.
+async function request(path: string, options: RequestInit = {}, silent = false): Promise<any> {
   const url = `${API_BASE}/${path}`;
   const headers = new Headers(options.headers || {});
-  
+
   const token = getJwtToken();
   if (token) {
     headers.set('Authorization', token);
@@ -42,8 +54,11 @@ async function request(path: string, options: RequestInit = {}): Promise<any> {
       // Repetir a requisição original com o novo token
       headers.set('Authorization', getJwtToken() || '');
       response = await fetch(url, { ...options, headers });
+    } else if (silent) {
+      // Sync background: não fazer logout, dados locais estão seguros
+      throw new AuthSyncError();
     } else {
-      // Limpar chave de encriptação e forçar redirect para login
+      // Operação explícita do utilizador: limpar sessão e notificar
       setJwtToken(null);
       window.dispatchEvent(new Event('auth-expired'));
       throw new Error('Sessão expirada. Faça login novamente.');
@@ -146,7 +161,7 @@ export async function logout(): Promise<void> {
   }
 }
 
-// 5. Pull Sync
+// 5. Pull Sync (silent: falha de auth não faz logout)
 export async function pullSync(since: string | null, profile = 'standard'): Promise<any> {
   const deviceId = getDeviceId();
   const params = new URLSearchParams({
@@ -156,10 +171,10 @@ export async function pullSync(since: string | null, profile = 'standard'): Prom
   if (since) {
     params.set('since', since);
   }
-  return request(`sync/pull?${params.toString()}`);
+  return request(`sync/pull?${params.toString()}`, {}, true);
 }
 
-// 6. Push Sync
+// 6. Push Sync (silent: falha de auth não faz logout)
 export async function pushSync(payload: any): Promise<any> {
   return request('sync/push', {
     method: 'POST',
@@ -167,7 +182,7 @@ export async function pushSync(payload: any): Promise<any> {
       device_id: getDeviceId(),
       ...payload,
     }),
-  });
+  }, true);
 }
 
 // 7. Obter tabelas de referência

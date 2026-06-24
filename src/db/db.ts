@@ -57,6 +57,10 @@ export interface Visita {
   produtos?: ProdutoPreco[];
   createdAt?: number;
   locationAutoCaptured?: boolean;
+  // Código legível gerado localmente antes do sync (ex: FIS-A3F2XY-20260624-001)
+  offlineCode?: string;
+  // Determinado no momento do sync: 'confirmada' se sincronizado em ≤ 5 min, 'pendente' caso contrário
+  confirmationStatus?: 'confirmada' | 'pendente';
 }
 
 export interface Infracao {
@@ -228,15 +232,24 @@ class EncryptedTable {
   async update(id: any, mods: any) {
     const key = getActiveKey();
     if (!key) throw new Error('Base de dados bloqueada.');
-    
+
     // Obter o registro completo, mesclar modificações e re-encriptar
     const current = await this.get(id);
     if (!current) throw new Error('Registro não encontrado.');
 
     const merged = { ...current, ...mods };
     const encrypted = await this.encrypt(merged, key);
-    
-    return this.table.update(id, { ciphertext: encrypted.ciphertext, synced: encrypted.synced });
+
+    // encrypted contém apenas campos não-sensíveis + ciphertext (campos sensíveis foram removidos pelo encrypt).
+    // Persistir tudo para que campos plaintext como offlineCode e confirmationStatus sejam também guardados.
+    const sensitiveSet = new Set(this.sensitiveFields);
+    const rawUpdate: Record<string, any> = {};
+    for (const [k, v] of Object.entries(encrypted)) {
+      if (!sensitiveSet.has(k)) rawUpdate[k] = v;
+    }
+    rawUpdate.ciphertext = encrypted.ciphertext;
+
+    return this.table.update(id, rawUpdate);
   }
 
   where(index: string) {
@@ -297,6 +310,16 @@ export class DrcaeDB extends Dexie {
     this.version(3).stores({
       firmas: 'id, synced',
       visitas: 'id, firmaId, synced',
+      infracoes: 'id, visitaId, synced',
+      anexos: 'id, visitaId, synced',
+      syncQueue: '++id, entity, action, timestamp',
+      metadata: 'key'
+    });
+
+    // Versão 4 — adiciona offlineCode (indexado) e confirmationStatus à Visita
+    this.version(4).stores({
+      firmas: 'id, synced',
+      visitas: 'id, firmaId, synced, offlineCode',
       infracoes: 'id, visitaId, synced',
       anexos: 'id, visitaId, synced',
       syncQueue: '++id, entity, action, timestamp',

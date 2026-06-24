@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { ArrowLeft, ArrowRight, User, Calendar, MapPin, AlertTriangle, FileText, Image as ImageIcon, PenLine, Lock, LockKeyhole, X, Check, Save, Info, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, User, Calendar, MapPin, AlertTriangle, FileText, Image as ImageIcon, PenLine, Lock, LockKeyhole, X, Check, Save, Info, CheckCircle, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { toast, customAlert } from '../lib/notifications';
 
 export default function VisitaDetail() {
   const { id } = useParams<{ id: string }>();
@@ -47,7 +48,7 @@ export default function VisitaDetail() {
   const handleOpenEdit = () => {
     if (!visita) return;
     if (!canEdit()) {
-      alert('Esta fiscalização foi submetida para o servidor e encontra-se registada há mais de 1 hora. Por razões de auditoria legal e conformidade legal, a retificação de dados está permanentemente bloqueada.');
+      customAlert.warning('Operação Bloqueada', 'Esta fiscalização foi submetida para o servidor e encontra-se registada há mais de 1 hora. Por razões de auditoria legal e conformidade legal, a retificação de dados está permanentemente bloqueada.');
       return;
     }
     setEditNotes(visita.notes || '');
@@ -86,10 +87,10 @@ export default function VisitaDetail() {
       });
 
       setShowEditModal(false);
-      alert('Alterações guardadas com sucesso! O registo foi assinalado para ressincronização.');
+      toast.success('Alterações guardadas com sucesso! O registo foi assinalado para ressincronização.');
     } catch (e) {
       console.error(e);
-      alert('Erro ao atualizar a fiscalização.');
+      toast.error('Erro ao atualizar a fiscalização.');
     }
   };
 
@@ -105,18 +106,30 @@ export default function VisitaDetail() {
             <h2 className="font-bold text-slate-900 tracking-tight">Detalhes da Visita</h2>
          </div>
          <div className="flex items-center gap-2">
-            <button 
+            <button
                onClick={handleOpenEdit}
                className={cn(
                   "p-2 rounded-lg border transition-all flex items-center justify-center",
-                  canEdit() 
-                    ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:text-blue-700" 
+                  canEdit()
+                    ? "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:text-blue-700"
                     : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                )}
                title={canEdit() ? "Retificar Dados" : "Edição Bloqueada"}
             >
                {canEdit() ? <PenLine className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
             </button>
+            {/* Badge de confirmação da fiscalização */}
+            {(() => {
+              if (visita.synced) {
+                return visita.confirmationStatus === 'pendente'
+                  ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 text-amber-800">Pendente</span>
+                  : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-emerald-100 text-emerald-800">Confirmada</span>;
+              }
+              const age = Date.now() - (visita.createdAt || 0);
+              return age > 5 * 60 * 1000
+                ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 text-amber-800">Pendente</span>
+                : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-blue-100 text-blue-700">Sincronizando…</span>;
+            })()}
             <span className={cn(
                "text-[10px] uppercase font-bold px-2 py-1.5 rounded-md",
                visita.status === 'Inconformes' ? "bg-amber-100 text-amber-800" :
@@ -167,7 +180,9 @@ export default function VisitaDetail() {
          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <div className="flex items-start justify-between">
                <div>
-                  <p className="text-[10px] text-slate-400 font-mono mb-1 shrink-0">#{visita.id?.toUpperCase()}</p>
+                  <p className="text-[10px] text-slate-400 font-mono mb-1 shrink-0">
+                    {visita.offlineCode || `#${visita.id?.slice(0, 8).toUpperCase()}`}
+                  </p>
                   <button onClick={() => navigate(`/firmas/${visita.firmaId}`)} className="text-left group mb-4">
                      <h2 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-blue-600 transition-colors flex items-center gap-1">
                         {firma?.name || 'Firma Desconhecida'}
@@ -293,8 +308,27 @@ export default function VisitaDetail() {
                   ))}
                </div>
             )}
-         </div>
-      </div>
+          </div>
+       </div>
+
+       {/* Barra de Ação Flutuante no Rodapé (Sticky Bottom Bar) */}
+       <div className="border-t border-slate-200 bg-white/70 backdrop-blur-md p-4 sticky bottom-0 z-10 shrink-0 shadow-lg flex items-center justify-between gap-4">
+          <div className="flex flex-col text-left min-w-0">
+             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
+                Operador Económico
+             </span>
+             <span className="text-sm font-bold text-slate-800 truncate max-w-[200px] md:max-w-xs leading-normal">
+                {firma?.name || 'Carregando...'}
+             </span>
+          </div>
+          <button
+             onClick={() => navigate('/visitas/nova', { state: { firmaId: visita.firmaId } })}
+             className="flex-1 max-w-xs md:max-w-sm py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:via-indigo-700 hover:to-violet-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 hover:shadow-indigo-200 hover:scale-[1.02] active:scale-[0.98] uppercase tracking-wider"
+          >
+             <Plus className="w-4 h-4" />
+             Nova Fiscalização
+          </button>
+       </div>
 
       {showEditModal && (
          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">

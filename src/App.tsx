@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -17,10 +17,24 @@ import Mapa from './pages/Mapa';
 import Equipe from './pages/Equipe';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize } from 'lucide-react';
+import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap } from 'lucide-react';
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { triggerFullSync } from './lib/sync';
+import { type SyncSnapshot, getSyncSnapshot, subscribeSyncState } from './lib/syncState';
+
+// Hook que subscreve ao estado global de sync sem polling
+function useSyncState(): SyncSnapshot {
+  const [state, setState] = useState<SyncSnapshot>(getSyncSnapshot);
+  useEffect(() => {
+    // Sincronizar imediatamente (pode ter mudado entre renders)
+    setState(getSyncSnapshot());
+    return subscribeSyncState(setState);
+  }, []);
+  return state;
+}
+import NotificationContainer from './components/NotificationContainer';
+import { toast, customAlert } from './lib/notifications';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const [selectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
@@ -29,31 +43,12 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const syncState = useSyncState();
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [cacheOperatorCondition, setCacheOperatorCondition] = useState(() => {
-     return localStorage.getItem('drcae_cache_operator_cond') || 'todos';
-  });
-  const [cacheTimeLimit, setCacheTimeLimit] = useState(() => {
-     return localStorage.getItem('drcae_cache_time_limit') || '6_meses';
-  });
-  const [cacheSyncLevel, setCacheSyncLevel] = useState(() => {
-     return parseInt(localStorage.getItem('drcae_cache_sync_level') || '85', 10);
-  });
 
-  const updateOperatorCondition = (val: string) => {
-     setCacheOperatorCondition(val);
-     localStorage.setItem('drcae_cache_operator_cond', val);
-  };
-
-  const updateTimeLimit = (val: string) => {
-     setCacheTimeLimit(val);
-     localStorage.setItem('drcae_cache_time_limit', val);
-  };
-
-  const updateSyncLevel = (val: number) => {
-     setCacheSyncLevel(val);
-     localStorage.setItem('drcae_cache_sync_level', val.toString());
-  };
 
   const stats = useLiveQuery(async () => {
     const firmas = await db.firmas.toArray();
@@ -63,40 +58,51 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     const queue = await db.syncQueue.toArray();
 
     const totalFirmas = firmas.length;
-    const unsyncedFirmas = firmas.filter(f => !f.synced).length;
+    const unsyncedFirmasList = firmas.filter(f => !f.synced);
+    const unsyncedFirmas = unsyncedFirmasList.length;
     const syncedFirmas = totalFirmas - unsyncedFirmas;
 
     const totalVisitas = visitas.length;
-    const unsyncedVisitas = visitas.filter(v => !v.synced).length;
+    const unsyncedVisitasList = visitas.filter(v => !v.synced);
+    const unsyncedVisitas = unsyncedVisitasList.length;
     const syncedVisitas = totalVisitas - unsyncedVisitas;
 
     const totalInfracoes = infracoes.length;
-    const unsyncedInfracoes = infracoes.filter(i => !i.synced).length;
+    const unsyncedInfracoesList = infracoes.filter(i => !i.synced);
+    const unsyncedInfracoes = unsyncedInfracoesList.length;
     const syncedInfracoes = totalInfracoes - unsyncedInfracoes;
 
     const totalAnexos = anexos.length;
-    const unsyncedAnexos = anexos.filter(a => !a.synced).length;
+    const unsyncedAnexosList = anexos.filter(a => !a.synced);
+    const unsyncedAnexos = unsyncedAnexosList.length;
     const syncedAnexos = totalAnexos - unsyncedAnexos;
 
-    // Calculate bytes of stored data as stringified JSON
+    // Bytes totais em cache
     const payloadString = JSON.stringify({ firmas, visitas, infracoes, anexos, queue });
     const bytes = new Blob([payloadString]).size;
 
+    // Bytes apenas dos registos não sincronizados (estimativa de payload de upload)
+    const unsyncedPayload = JSON.stringify({
+      firmas: unsyncedFirmasList,
+      visitas: unsyncedVisitasList,
+      infracoes: unsyncedInfracoesList,
+      anexos: unsyncedAnexosList,
+    });
+    const unsyncedBytes = new Blob([unsyncedPayload]).size;
+
+    // Última sync do metadata
+    const metaLastSync = await db.table('metadata').get('last_sync_at');
+    const lastSyncAt: string | null = metaLastSync?.value || null;
+
     return {
-      totalFirmas,
-      unsyncedFirmas,
-      syncedFirmas,
-      totalVisitas,
-      unsyncedVisitas,
-      syncedVisitas,
-      totalInfracoes,
-      unsyncedInfracoes,
-      syncedInfracoes,
-      totalAnexos,
-      unsyncedAnexos,
-      syncedAnexos,
+      totalFirmas, unsyncedFirmas, syncedFirmas,
+      totalVisitas, unsyncedVisitas, syncedVisitas,
+      totalInfracoes, unsyncedInfracoes, syncedInfracoes,
+      totalAnexos, unsyncedAnexos, syncedAnexos,
       queueLength: queue.length,
-      bytes
+      bytes,
+      unsyncedBytes,
+      lastSyncAt,
     };
   }, []);
 
@@ -140,7 +146,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     const totalToClear = syncedFirmas + syncedVisitas + syncedInfracoes + syncedAnexos;
 
     if (totalToClear === 0) {
-      alert('Não existem dados sincronizados em cache para limpar. Todos os seus dados locais são novos/não submetidos e foram preservados com segurança.');
+      customAlert.info('Limpeza de Cache', 'Não existem dados sincronizados em cache para limpar. Todos os seus dados locais são novos/não submetidos e foram preservados com segurança.');
       return;
     }
 
@@ -166,10 +172,10 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
       const syncedAnxList = await db.anexos.filter(a => a.synced === true).toArray();
       await db.anexos.bulkDelete(syncedAnxList.map(a => a.id!));
 
-      alert('A cache de dados sincronizados foi limpa com sucesso. Os dados offline não submetidos foram preservados!');
+      toast.success('A cache de dados sincronizados foi limpa com sucesso. Os dados offline não submetidos foram preservados!');
     } catch (e) {
       console.error(e);
-      alert('Ocorreu um erro ao limpar o cache.');
+      toast.error('Ocorreu um erro ao limpar o cache.');
     }
   };
 
@@ -187,6 +193,54 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     URL.revokeObjectURL(url);
   };
 
+  // ── Sync helpers ──────────────────────────────────────────────
+  const formatLastSync = (isoStr: string | null | undefined): string => {
+    if (!isoStr) return 'Nunca sincronizado';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return 'Data desconhecida';
+    const now = Date.now();
+    const diff = now - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    const timeStr = d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    if (mins < 1) return 'há poucos segundos';
+    if (mins < 60) return `há ${mins} min`;
+    if (days === 0) return `hoje às ${timeStr}`;
+    if (days === 1) return `ontem às ${timeStr}`;
+    return `há ${days} dias`;
+  };
+
+  const estimateEta = (bytes: number, items: number): string => {
+    if (items === 0) return '—';
+    const secs = Math.max(1, Math.ceil(bytes / (30 * 1024)));
+    if (secs < 60) return `~${secs}s`;
+    return `~${Math.ceil(secs / 60)} min`;
+  };
+
+  const formatDurationMs = (ms: number | undefined): string => {
+    if (!ms) return '';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const handleManualSync = async () => {
+    if (isManualSyncing) return;
+    setIsManualSyncing(true);
+    setElapsedSecs(0);
+    elapsedRef.current = setInterval(() => setElapsedSecs(s => s + 1), 1000);
+    try {
+      await triggerFullSync();
+    } catch (_) {
+      // erro já emitido para syncState
+    } finally {
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+      elapsedRef.current = null;
+      setIsManualSyncing(false);
+    }
+  };
+  // ── fim Sync helpers ───────────────────────────────────────────
+
   const importData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -197,9 +251,9 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
           if (data.firmas) await db.firmas.bulkPut(data.firmas);
           if (data.visitas) await db.visitas.bulkPut(data.visitas);
           if (data.infracoes) await db.infracoes.bulkPut(data.infracoes);
-          alert('Pacote de atualização carregado com sucesso!');
+          toast.success('Pacote de atualização carregado com sucesso!');
         } catch (error) {
-          alert('Erro ao importar dados. Verifique se o ficheiro é válido.');
+          toast.error('Erro ao importar dados. Verifique se o ficheiro é válido.');
         }
       };
       reader.readAsText(file);
@@ -376,100 +430,239 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
 
-      {/* DRCAE ADVANCED CACHE DEPTH CONTROLS */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden font-sans space-y-4">
-         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center gap-3 text-slate-700">
-               <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
-                  <Layers className="w-5 h-5" />
-               </div>
-               <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Controle de Profundidade de Cache</h3>
-                  <p className="text-xs text-slate-500">Defina regras de pré-carregamento e retenção de dados offline</p>
-               </div>
-            </div>
-            <span className="text-[10px] font-mono font-black uppercase bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md">Configuração Local</span>
-         </div>
 
-         <div className="p-5 space-y-5">
-            {/* Sync level indicators */}
-            <div className="space-y-2">
-               <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-600 uppercase tracking-widest text-[9px]">Cota de Sincronismo (Dados Armazenados vs. Total Geral)</span>
-                  <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">{cacheSyncLevel}% Sincronizado</span>
-               </div>
-               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-600 rounded-full transition-all duration-300" style={{ width: `${cacheSyncLevel}%` }} />
-               </div>
-               <div className="flex items-center">
-                  <input 
-                     type="range" 
-                     min="30" 
-                     max="100" 
-                     value={cacheSyncLevel} 
-                     onChange={(e) => updateSyncLevel(parseInt(e.target.value, 10))}
-                     className="w-full accent-indigo-600 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer"
-                  />
-               </div>
-               <p className="text-[10px] text-slate-400 font-medium leading-normal">
-                  Arraste o slider para ajustar a cota de dados offline no dispositivo. Níveis superiores mantêm mais detalhes em memória para pesquisa offline rigorosa.
-               </p>
+
+      {/* ═══════════════════════════════════════════════════════════════
+           PAINEL DE SINCRONIZAÇÃO — estado em tempo real + acções
+          ═══════════════════════════════════════════════════════════════ */}
+      {(() => {
+        const isSyncing = syncState.phase === 'pushing' || syncState.phase === 'pulling';
+        const unsyncedTotal = (stats?.unsyncedFirmas ?? 0) + (stats?.unsyncedVisitas ?? 0) +
+          (stats?.unsyncedInfracoes ?? 0) + (stats?.unsyncedAnexos ?? 0);
+        const unsyncedBytes = stats?.unsyncedBytes ?? 0;
+
+        const phaseLabel =
+          syncState.phase === 'pushing' ? 'A enviar dados para o servidor...' :
+          syncState.phase === 'pulling' ? 'A receber actualizações...' :
+          syncState.phase === 'done'    ? 'Sincronização concluída' :
+          syncState.phase === 'error'   ? 'Falha na sincronização' :
+          syncState.phase === 'needs-auth' ? 'Sessão inactiva — re-autenticar para sync' :
+          unsyncedTotal > 0 ? `${unsyncedTotal} registo(s) por sincronizar` : 'Tudo sincronizado';
+
+        const statusDot =
+          syncState.phase === 'done'    ? 'bg-emerald-500' :
+          syncState.phase === 'error'   ? 'bg-red-500' :
+          syncState.phase === 'needs-auth' ? 'bg-amber-400' :
+          isSyncing ? 'bg-blue-500 animate-pulse' :
+          unsyncedTotal > 0 ? 'bg-orange-400' : 'bg-emerald-500';
+
+        const pushProgress = syncState.pushTotal > 0
+          ? Math.round((syncState.pushDone / syncState.pushTotal) * 100)
+          : (syncState.phase === 'pushing' ? 0 : 100);
+
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            {/* Cabeçalho do painel */}
+            <div className="bg-gradient-to-r from-slate-800 to-slate-700 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Centro de Sincronização</h3>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">Monitor de dados offline ↔ servidor</p>
+                </div>
+              </div>
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing || isManualSyncing}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+                  isSyncing || isManualSyncing
+                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-white active:scale-95'
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${(isSyncing || isManualSyncing) ? 'animate-spin' : ''}`} />
+                {isSyncing || isManualSyncing ? 'A sincronizar...' : 'Sincronizar Agora'}
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
-               {/* Operator conditions setting dropdown */}
-               <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-0.5">Condição dos Operadores para Cachear Detalhes</label>
-                  <select
-                     value={cacheOperatorCondition}
-                     onChange={(e) => updateOperatorCondition(e.target.value)}
-                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
-                  >
-                     <option value="todos">Todos os operadores cadastrados</option>
-                     <option value="ativos">Apenas operadores com atividade ativa recente</option>
-                     <option value="alto_risco">Apenas operadores com risco de infração elevado</option>
-                     <option value="vistorias_pendentes">Apenas com vistorias preventivas pendentes</option>
-                  </select>
-                  <p className="text-[9px] text-slate-400 font-medium leading-tight">
-                     Define quais metadados das firmas serão transferidos para o dispositivo para busca rápida em modo offline.
-                  </p>
-               </div>
+            <div className="p-5 space-y-4">
+              {/* Estado geral */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusDot}`} />
+                  <span className="text-sm font-semibold text-slate-700">{phaseLabel}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                  <Clock className="w-3.5 h-3.5" />
+                  {isSyncing && isManualSyncing
+                    ? `${elapsedSecs}s`
+                    : formatLastSync(stats?.lastSyncAt ?? syncState.lastSyncAt)}
+                </div>
+              </div>
 
-               {/* Time frame setting selection */}
-               <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-0.5">Janela Retrospectiva do Histórico em Cache</label>
-                  <select
-                     value={cacheTimeLimit}
-                     onChange={(e) => updateTimeLimit(e.target.value)}
-                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
-                  >
-                     <option value="30_dias">Vistorias efetuadas nos últimos 30 dias</option>
-                     <option value="6_meses">Vistorias efetuadas nos últimos 6 meses (Recomendado)</option>
-                     <option value="1_ano">Vistorias efetuadas no último 1 ano</option>
-                     <option value="todo">Sincronizar histórico completo (Sem limite temporal)</option>
-                  </select>
-                  <p className="text-[9px] text-slate-400 font-medium leading-tight">
-                     Filtro temporal de ações retroativas descarregadas e mantidas em cache no telemóvel para consulta técnica rápida.
-                  </p>
-               </div>
+              {/* ── Progresso em tempo real (só durante sync) ── */}
+              {isSyncing && (
+                <div className="space-y-3">
+                  {/* Upload */}
+                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                        <ArrowUpCircle className="w-4 h-4 text-blue-500" />
+                        Upload para servidor
+                      </div>
+                      <span className="text-[11px] font-bold text-blue-600">
+                        {syncState.phase === 'pushing'
+                          ? syncState.pushTotal > 0 ? `${syncState.pushDone} / ${syncState.pushTotal}` : 'A preparar...'
+                          : `${syncState.pushDone} enviados`}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          syncState.phase === 'pushing' ? 'bg-blue-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${syncState.phase === 'pushing' ? pushProgress : 100}%` }}
+                      />
+                    </div>
+                    {syncState.phase === 'pushing' && syncState.pushTotal === 0 && (
+                      <div className="mt-1.5 w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-400 rounded-full w-1/3 animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Download */}
+                  <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                        <ArrowDownCircle className="w-4 h-4 text-indigo-500" />
+                        Download do servidor
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-500">
+                        {syncState.phase === 'pulling' ? `${syncState.pullCount} recebidos` : 'A aguardar...'}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      {syncState.phase === 'pulling'
+                        ? <div className="h-full bg-indigo-400 rounded-full w-2/3 animate-pulse" />
+                        : <div className="h-full bg-slate-300 rounded-full w-0" />
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Por sincronizar (Upload pendente) — só quando idle e há dados ── */}
+              {!isSyncing && unsyncedTotal > 0 && (
+                <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ArrowUpCircle className="w-4 h-4 text-orange-500" />
+                    <span className="text-xs font-bold text-orange-700">Por enviar ao servidor</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    {[
+                      { label: 'Operadores', count: stats?.unsyncedFirmas ?? 0, color: 'bg-indigo-100 text-indigo-700' },
+                      { label: 'Fiscalizações', count: stats?.unsyncedVisitas ?? 0, color: 'bg-blue-100 text-blue-700' },
+                      { label: 'Infrações', count: stats?.unsyncedInfracoes ?? 0, color: 'bg-orange-100 text-orange-700' },
+                      { label: 'Anexos', count: stats?.unsyncedAnexos ?? 0, color: 'bg-purple-100 text-purple-700' },
+                    ].map(({ label, count, color }) => (
+                      <div key={label} className={`rounded-lg px-2.5 py-2 text-center ${color}`}>
+                        <span className="text-base font-black block">{count}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wide opacity-80">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-orange-200/60 pt-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <HardDrive className="w-3.5 h-3.5 text-orange-400" />
+                      <span>Tamanho estimado: <strong className="text-slate-700">{formatBytes(unsyncedBytes)}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-orange-400" />
+                      <span>ETA: <strong className="text-slate-700">{estimateEta(unsyncedBytes, unsyncedTotal)}</strong></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Tudo sincronizado (sem pendentes, idle) ── */}
+              {!isSyncing && unsyncedTotal === 0 && syncState.phase !== 'error' && syncState.phase !== 'needs-auth' && (
+                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">Dados actualizados</p>
+                    <p className="text-xs text-emerald-600 font-medium">Todos os registos locais foram enviados ao servidor.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Erro de auth ── */}
+              {syncState.phase === 'needs-auth' && (
+                <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 flex items-center gap-3">
+                  <WifiOff className="w-5 h-5 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-800">Sessão expirada</p>
+                    <p className="text-xs text-amber-700 font-medium">Os dados locais estão seguros. Re-autentique-se para retomar a sincronização.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Erro de rede/servidor ── */}
+              {syncState.phase === 'error' && syncState.errors.length > 0 && (
+                <div className="bg-red-50 rounded-xl p-3.5 border border-red-200 flex items-start gap-3">
+                  <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-red-700 mb-1">Erro na sincronização</p>
+                    <p className="text-[11px] text-red-600 font-medium leading-relaxed">{syncState.errors[0]}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Resultado da última sync completa ── */}
+              {(syncState.lastPushDone !== undefined || syncState.lastPullCount !== undefined) && (
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Última sincronização completa</span>
+                  </div>
+                  <div className="grid grid-cols-3 divide-x divide-slate-100">
+                    <div className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <ArrowUpCircle className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Enviados</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{syncState.lastPushDone ?? 0}</span>
+                    </div>
+                    <div className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <ArrowDownCircle className="w-3.5 h-3.5 text-indigo-500" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recebidos</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{syncState.lastPullCount ?? 0}</span>
+                    </div>
+                    <div className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        {(syncState.lastPushErrors ?? 0) > 0
+                          ? <XCircle className="w-3.5 h-3.5 text-red-500" />
+                          : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          {(syncState.lastPushErrors ?? 0) > 0 ? 'Erros' : 'Duração'}
+                        </span>
+                      </div>
+                      <span className={`text-lg font-black ${(syncState.lastPushErrors ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                        {(syncState.lastPushErrors ?? 0) > 0 ? syncState.lastPushErrors : formatDurationMs(syncState.lastDurationMs)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-         </div>
-      </div>
+          </div>
+        );
+      })()}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-gray-700">
-               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                  <RefreshCw className="w-5 h-5" />
-               </div>
-               <div>
-                  <h3 className="font-bold text-gray-900">Sincronização</h3>
-                  <p className="text-xs text-gray-500">Agendada em segundo plano</p>
-               </div>
-            </div>
-            <span className="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-md">Ativo</span>
-         </div>
-         
          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-3 text-gray-700">
                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
@@ -945,7 +1138,7 @@ export default function App() {
     const handleAuthExpired = () => {
       setIsAuthenticated(false);
       crypto.setActiveKey(null);
-      alert('A sua sessão expirou. Por favor, inicie sessão novamente.');
+      customAlert.warning('Sessão Expirada', 'A sua sessão expirou. Por favor, inicie sessão novamente.');
     };
     window.addEventListener('auth-expired', handleAuthExpired);
     return () => window.removeEventListener('auth-expired', handleAuthExpired);
@@ -1027,6 +1220,7 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/app">
+      <NotificationContainer />
       <Routes>
         <Route path="/" element={<Layout onLogout={handleLogout} />}>
           <Route index element={<Dashboard />} />
