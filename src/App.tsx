@@ -1355,8 +1355,9 @@ export default function App() {
     return <AwaitingApprovalScreen onLogout={handleLogout} />;
   }
 
+  const appBasename = (window.location.pathname === "/app" || window.location.pathname.startsWith("/app/")) ? "/app" : "/";
   return (
-    <BrowserRouter basename="/app">
+    <BrowserRouter basename={appBasename}>
       <NotificationContainer />
       <Routes>
         <Route path="/" element={<Layout onLogout={handleLogout} />}>
