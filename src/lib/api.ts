@@ -235,3 +235,63 @@ export async function savePushSubscription(subscription: PushSubscriptionJSON): 
     }),
   });
 }
+
+// Registo completo com hardware info → devolve webview_signature (fluxo browser directo)
+export async function registerDeviceFull(
+  code: string,
+  alias: string,
+  deviceInfo: object,
+): Promise<{ device_code: string; webview_signature: string; session_id: string }> {
+  const url = `${API_BASE}/auth/device-register`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      device_id: getDeviceId(),
+      code: code.trim().toUpperCase(),
+      alias: alias.trim() || 'Browser',
+      device_info: deviceInfo,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Erro ${res.status}`);
+  }
+  return res.json();
+}
+
+// Troca webview_signature por launch_token (curta duração)
+export async function requestLaunchToken(
+  webviewSignature: string,
+): Promise<{ launch_token: string; expires_in: number }> {
+  const url = `${API_BASE}/auth/webview-launch`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Webview-Signature': webviewSignature,
+    },
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Erro ${res.status}`);
+  }
+  return res.json();
+}
+
+// Troca launch_token pelo cookie __wvs (Set-Cookie HttpOnly)
+export async function performHandshake(launchToken: string): Promise<void> {
+  const url = `${API_BASE}/auth/webview-handshake`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ launch_token: launchToken }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Erro ${res.status}`);
+  }
+}

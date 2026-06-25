@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -28,6 +28,13 @@ import NotificationContainer from './components/NotificationContainer';
 import { toast, customAlert } from './lib/notifications';
 import { useTheme } from './hooks/useTheme';
 import { cn } from './lib/utils';
+import PairingScreen from './screens/PairingScreen';
+import {
+  checkSessionValid,
+  getPairingCredentials,
+  clearPairingCredentials,
+} from './lib/pairing';
+import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const { theme, setTheme } = useTheme();
@@ -715,7 +722,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                </div>
             </div>
             <a 
-              href="/api/app/webview/download" 
+              href={WEBVIEW_APK_DOWNLOAD_URL}
               download 
               className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 cursor-pointer flex items-center gap-1.5"
             >
@@ -1046,6 +1053,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+// Exibido quando login retorna 403 (dispositivo aguarda aprovação pós-login)
 function AwaitingApprovalScreen({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
@@ -1070,108 +1078,76 @@ function AwaitingApprovalScreen({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-// Ecrã de acesso bloqueado — acesso directo sem sessão webview
-function WebviewRequired({ onDevConnect }: { onDevConnect?: (sig: string) => void }) {
-  const isDevMode = (import.meta as any).env?.VITE_WEBVIEW_DEV_MODE === 'true';
-  const [sig, setSig] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
+// Exibido após emparelhamento directo (browser), enquanto o admin não aprova
+function WaitingApprovalScreen({
+  onApproved,
+  onRepair,
+}: {
+  onApproved: () => void;
+  onRepair: () => void;
+}) {
+  const creds = getPairingCredentials();
+  const deviceCode = creds?.device_code ?? '—';
 
-  const handleDevConnect = async () => {
-    if (!sig.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      // Simula o fluxo do webview: launch → handshake → cookie __wvs
-      const launchRes = await fetch('/api/app/auth/webview-launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Webview-Signature': sig.trim() },
-        credentials: 'include',
-      });
-      if (!launchRes.ok) throw new Error(`Erro ${launchRes.status} — assinatura inválida ou dispositivo não aprovado.`);
-      const { launch_token } = await launchRes.json();
-
-      const handshakeRes = await fetch('/api/app/auth/webview-handshake', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ launch_token }),
-        credentials: 'include',
-      });
-      if (!handshakeRes.ok) throw new Error(`Erro ${handshakeRes.status} — handshake falhou.`);
-
-      onDevConnect?.(sig.trim());
-    } catch (err: any) {
-      setError(err.message || 'Falha ao conectar.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      try {
+        const status = await api.checkDeviceStatus();
+        if ((status as any).approved) {
+          clearInterval(poll);
+          onApproved();
+        }
+      } catch {
+        // falha de rede — tentar novamente no próximo ciclo
+      }
+    }, 10_000);
+    return () => clearInterval(poll);
+  }, [onApproved]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
-      <div className="text-center px-8 py-12 max-w-sm w-full">
-        <Smartphone className="w-14 h-14 text-slate-600 mx-auto mb-4" />
-        <h1 className="text-2xl font-black text-white tracking-widest mb-2">DRCAE</h1>
+    <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center space-y-6">
+        <div className="w-16 h-16 bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto">
+          <ShieldCheck className="w-8 h-8 text-amber-400" />
+        </div>
 
-        {isDevMode ? (
-          <div className="mt-6 space-y-4 text-left">
-            <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl px-4 py-3">
-              <p className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Modo Desenvolvimento</p>
-              <p className="text-amber-300/80 text-xs">Cole a <code className="font-mono bg-amber-900/40 px-1 rounded">webview_signature</code> do dispositivo para aceder sem a app nativa.</p>
-            </div>
+        <div>
+          <h2 className="text-xl font-extrabold text-white">Aguardando Aprovação</h2>
+          <p className="text-slate-400 text-sm mt-2 leading-relaxed">
+            O dispositivo foi registado com sucesso. O administrador precisa de o aprovar no painel de{' '}
+            <strong className="text-slate-300">Sincronização Móvel</strong>.
+          </p>
+        </div>
 
-            <textarea
-              className="w-full bg-slate-800 border border-slate-600 rounded-xl p-3 text-slate-200 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={4}
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              value={sig}
-              onChange={e => { setSig(e.target.value); setError(''); }}
-            />
+        <div className="bg-slate-800/60 rounded-2xl px-6 py-4 space-y-1">
+          <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold">Código do Dispositivo</p>
+          <p className="text-white text-2xl font-black font-mono tracking-widest">{deviceCode}</p>
+        </div>
 
-            {error && <p className="text-red-400 text-xs">{error}</p>}
+        <div className="flex items-center gap-2 justify-center text-slate-500 text-xs">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          A verificar aprovação…
+        </div>
 
-            <button
-              onClick={handleDevConnect}
-              disabled={loading || !sig.trim()}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors"
-            >
-              {loading ? 'A conectar...' : 'Conectar com Assinatura'}
-            </button>
-          </div>
-        ) : (
-          <>
-            <p className="text-slate-400 text-sm leading-relaxed mt-4">
-              Esta aplicação só está disponível através da app <strong className="text-slate-300">DRCAE</strong> instalada no dispositivo.
-            </p>
-            <p className="text-slate-600 text-xs mt-4">Acesso directo via browser não é permitido.</p>
-
-            <div className="mt-8 pt-6 border-t border-slate-800 space-y-4">
-              <p className="text-slate-400 text-xs leading-relaxed">
-                Se ainda não tem a aplicação instalada ou precisa de a atualizar, pode descarregar o APK aqui:
-              </p>
-              <a
-                href="/api/app/webview/download"
-                download
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 w-full cursor-pointer"
-              >
-                <DownloadCloud className="w-4 h-4" /> Descarregar APK da App
-              </a>
-            </div>
-          </>
-        )}
+        <button
+          onClick={onRepair}
+          className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-sm font-semibold transition-colors"
+        >
+          Emparelhar novamente
+        </button>
       </div>
     </div>
   );
 }
 
+type SessionState = 'checking' | 'valid' | 'needs_pairing' | 'waiting_approval' | 'launching';
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [devicePending, setDevicePending] = useState(false);
-  // null = a verificar; true = sessão válida; false = sem sessão webview
-  const [webviewReady, setWebviewReady] = useState<boolean | null>(null);
-  const [authToast, setAuthToast] = useState<string | null>(null);
+  const [sessionState, setSessionState] = useState<SessionState>('checking');
 
-  // Handshake webview e restauração de sessão
+  // Inicialização de sessão
   useEffect(() => {
     async function initSession() {
       // 1. Restaurar chave criptográfica se houver no sessionStorage
@@ -1179,12 +1155,10 @@ export default function App() {
       if (savedKeyHex) {
         try {
           await crypto.restoreSessionKey(savedKeyHex);
-          // JWT pode ter expirado enquanto o tab esteve aberto — tentar refresh proactivo
           if (!api.getJwtToken()) {
             const refreshed = await api.refreshSilent();
             if (!refreshed) {
               sessionStorage.removeItem('drcae_session_key');
-              return;
             }
           }
           setIsAuthenticated(true);
@@ -1194,7 +1168,7 @@ export default function App() {
         }
       }
 
-      // 2. Handshake webview — troca o ?wvt= pelo cookie __wvs
+      // 2. Handshake webview — troca o ?wvt= pelo cookie __wvs (fluxo app nativa)
       const params = new URLSearchParams(window.location.search);
       const wvt = params.get('wvt');
       if (wvt) {
@@ -1205,22 +1179,65 @@ export default function App() {
             body: JSON.stringify({ launch_token: wvt }),
             credentials: 'include',
           });
-          // Remove ?wvt= da URL sem recarregar
           params.delete('wvt');
           const newSearch = params.toString();
           window.history.replaceState({}, '', window.location.pathname + (newSearch ? '?' + newSearch : ''));
-          setWebviewReady(true);
+          setSessionState('valid');
         } catch {
-          setWebviewReady(false);
+          // token inválido — tratar como sem sessão
+          setSessionState('needs_pairing');
         }
-      } else {
-        // Sem ?wvt= — pode ter cookie __wvs válido (re-entradas após handshake já feito)
-        // O NGINX valida; se chegou aqui, o cookie já é válido
-        setWebviewReady(true);
+        return;
       }
+
+      // 3. Verificar se já existe uma sessão __wvs activa
+      const sessionOk = await checkSessionValid();
+      if (sessionOk) {
+        setSessionState('valid');
+        return;
+      }
+
+      // 4. Sem sessão — verificar credenciais de emparelhamento guardadas
+      const creds = getPairingCredentials();
+      if (creds) {
+        try {
+          const status = await api.checkDeviceStatus();
+          if ((status as any).approved) {
+            setSessionState('launching');
+          } else {
+            setSessionState('waiting_approval');
+          }
+        } catch {
+          setSessionState('waiting_approval');
+        }
+        return;
+      }
+
+      // 5. Nenhuma credencial — emparelhamento necessário
+      setSessionState('needs_pairing');
     }
+
     initSession();
   }, []);
+
+  // Quando aprovado, fazer launch + handshake para obter __wvs
+  useEffect(() => {
+    if (sessionState !== 'launching') return;
+    const creds = getPairingCredentials();
+    if (!creds) {
+      setSessionState('needs_pairing');
+      return;
+    }
+
+    (async () => {
+      const { launch_token } = await api.requestLaunchToken(creds.webview_signature);
+      await api.performHandshake(launch_token);
+      setSessionState('valid');
+    })().catch(() => {
+      clearPairingCredentials();
+      setSessionState('needs_pairing');
+    });
+  }, [sessionState]);
 
   // Escutar expiração de token
   useEffect(() => {
@@ -1233,7 +1250,7 @@ export default function App() {
     return () => window.removeEventListener('auth-expired', handleAuthExpired);
   }, []);
 
-  // Escutar dispositivo pendente de aprovação
+  // Escutar dispositivo pendente de aprovação (login retornou 403)
   useEffect(() => {
     const handler = () => setDevicePending(true);
     window.addEventListener('device-pending-approval', handler);
@@ -1242,7 +1259,6 @@ export default function App() {
 
   const handleLogin = async () => {
     setIsAuthenticated(true);
-    // Só chamar APIs se o login foi online (JWT presente); login offline não tem JWT
     if (navigator.onLine && api.getJwtToken()) {
       try {
         const assetsData = await api.getAssets();
@@ -1268,7 +1284,17 @@ export default function App() {
     setDevicePending(false);
   };
 
-  if (webviewReady === null) {
+  const handleRepair = useCallback(() => {
+    clearPairingCredentials();
+    setSessionState('needs_pairing');
+  }, []);
+
+  const handleApproved = useCallback(() => {
+    setSessionState('launching');
+  }, []);
+
+  // Estados de sessão antes do login
+  if (sessionState === 'checking' || sessionState === 'launching') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
         <div className="flex flex-col items-center gap-3">
@@ -1279,10 +1305,15 @@ export default function App() {
     );
   }
 
-  if (!webviewReady) {
-    return <WebviewRequired onDevConnect={() => setWebviewReady(true)} />;
+  if (sessionState === 'needs_pairing') {
+    return <PairingScreen onRegistered={() => setSessionState('waiting_approval')} />;
   }
 
+  if (sessionState === 'waiting_approval') {
+    return <WaitingApprovalScreen onApproved={handleApproved} onRepair={handleRepair} />;
+  }
+
+  // sessionState === 'valid'
   if (!isAuthenticated) {
     return <LoginPage onLogin={handleLogin} />;
   }

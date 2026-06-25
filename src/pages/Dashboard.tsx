@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
 
 // Helper determinístico para iniciais e gradientes de firmas
 const getAvatarData = (name: string, nif: string) => {
@@ -180,7 +181,7 @@ export default function Dashboard() {
             </div>
           </div>
           <a
-            href="/api/app/webview/download"
+            href={WEBVIEW_APK_DOWNLOAD_URL}
             download
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md transition-all shrink-0 cursor-pointer w-full sm:w-auto justify-center"
           >
