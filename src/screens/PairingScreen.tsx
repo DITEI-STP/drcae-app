@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
-import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw } from 'lucide-react';
+import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw, Zap, ZoomIn, ZoomOut } from 'lucide-react';
 import * as api from '../lib/api';
 import {
   collectBrowserDeviceInfo,
@@ -31,16 +31,39 @@ export default function PairingScreen({ onRegistered }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Camera controls
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraIndex, setCameraIndex] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number } | null>(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
   const scannedRef = useRef(false);
 
-  // Inicia câmara quando em modo scan
+  const applyTrackCapabilities = useCallback((track: MediaStreamTrack) => {
+    trackRef.current = track;
+    const caps = track.getCapabilities() as any;
+    if (caps.zoom) {
+      setZoomCaps({ min: caps.zoom.min, max: caps.zoom.max });
+      setZoom(caps.zoom.min || 1);
+    } else {
+      setZoomCaps(null);
+    }
+    setTorchSupported(!!caps.torch);
+    setTorchOn(false);
+  }, []);
+
+  // Inicia câmara quando em modo scan ou quando cameraIndex muda
   useEffect(() => {
     if (mode !== 'scan') {
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
+      trackRef.current = null;
       return;
     }
 
@@ -52,24 +75,54 @@ export default function PairingScreen({ onRegistered }: Props) {
       return;
     }
 
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => {
+    let cancelled = false;
+
+    const startCamera = async () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+        trackRef.current = null;
+      }
+
+      try {
+        // Se já temos câmaras enumeradas, usar deviceId para selecção precisa
+        const constraints: MediaStreamConstraints =
+          cameras.length > 0 && cameras[cameraIndex]
+            ? { video: { deviceId: { exact: cameras[cameraIndex].deviceId } } }
+            : { video: { facingMode: 'environment' } };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+
         streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        applyTrackCapabilities(track);
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
         }
-      })
-      .catch(() => {
-        setCameraError('Permissão de câmara negada. Use a introdução manual.');
-      });
+
+        // Enumerar câmaras após permissão concedida (labels ficam disponíveis)
+        if (cameras.length === 0) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const cams = devices.filter(d => d.kind === 'videoinput');
+          if (!cancelled) setCameras(cams);
+        }
+      } catch {
+        if (!cancelled) setCameraError('Permissão de câmara negada. Use a introdução manual.');
+      }
+    };
+
+    startCamera();
 
     return () => {
+      cancelled = true;
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
+      trackRef.current = null;
     };
-  }, [mode]);
+  }, [mode, cameraIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loop de scan de QR
   useEffect(() => {
@@ -106,6 +159,29 @@ export default function PairingScreen({ onRegistered }: Props) {
     return () => clearInterval(interval);
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const cycleCamera = () => {
+    if (cameras.length <= 1) return;
+    setCameraIndex(i => (i + 1) % cameras.length);
+  };
+
+  const toggleTorch = async () => {
+    if (!trackRef.current || !torchSupported) return;
+    const next = !torchOn;
+    try {
+      await trackRef.current.applyConstraints({ advanced: [{ torch: next } as any] });
+      setTorchOn(next);
+    } catch {}
+  };
+
+  const applyZoom = async (value: number) => {
+    if (!trackRef.current || !zoomCaps) return;
+    const clamped = Math.max(zoomCaps.min, Math.min(zoomCaps.max, value));
+    try {
+      await trackRef.current.applyConstraints({ advanced: [{ zoom: clamped } as any] });
+      setZoom(clamped);
+    } catch {}
+  };
+
   async function handleSubmit(code: string, endpoint: string) {
     const deviceId = api.getDeviceId();
     const deviceAlias = alias.trim() || generateDeviceAlias();
@@ -124,7 +200,6 @@ export default function PairingScreen({ onRegistered }: Props) {
         endpoint,
         paired_at: new Date().toISOString(),
       });
-      // Verificar se já foi auto-aprovado
       let autoApproved = false;
       try {
         const status = await api.checkDeviceStatus();
@@ -188,7 +263,7 @@ export default function PairingScreen({ onRegistered }: Props) {
 
         {/* Conteúdo */}
         {mode === 'scan' ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {cameraError ? (
               <div className="bg-amber-900/30 border border-amber-700/40 rounded-2xl p-4 text-center space-y-3">
                 <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
@@ -218,12 +293,71 @@ export default function PairingScreen({ onRegistered }: Props) {
                       <span className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-400 rounded-br-lg" />
                     </div>
                   </div>
+
+                  {/* Controlos sobrepostos */}
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-auto">
+                    {cameras.length > 1 ? (
+                      <button
+                        onClick={cycleCamera}
+                        title={`Câmara ${cameraIndex + 1} de ${cameras.length}`}
+                        className="p-2 bg-slate-900/75 hover:bg-slate-800/90 rounded-full text-white transition-colors"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    ) : <span />}
+
+                    {torchSupported && (
+                      <button
+                        onClick={toggleTorch}
+                        title={torchOn ? 'Desligar lanterna' : 'Ligar lanterna'}
+                        className={`p-2 rounded-full transition-colors ${
+                          torchOn
+                            ? 'bg-yellow-500 text-slate-900'
+                            : 'bg-slate-900/75 hover:bg-slate-800/90 text-white'
+                        }`}
+                      >
+                        <Zap className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
                   {loading && (
                     <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center">
                       <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
                     </div>
                   )}
                 </div>
+
+                {/* Controlo de zoom */}
+                {zoomCaps && (
+                  <div className="flex items-center gap-2 px-1">
+                    <button
+                      onClick={() => applyZoom(zoom - 0.5)}
+                      disabled={zoom <= zoomCaps.min}
+                      className="p-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded-lg text-white transition-colors"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </button>
+                    <input
+                      type="range"
+                      min={zoomCaps.min}
+                      max={zoomCaps.max}
+                      step={0.1}
+                      value={zoom}
+                      onChange={e => applyZoom(Number(e.target.value))}
+                      className="flex-1 accent-blue-500"
+                    />
+                    <button
+                      onClick={() => applyZoom(zoom + 0.5)}
+                      disabled={zoom >= zoomCaps.max}
+                      className="p-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded-lg text-white transition-colors"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
+                    <span className="text-slate-400 text-xs w-9 text-right">{zoom.toFixed(1)}x</span>
+                  </div>
+                )}
+
                 <canvas ref={canvasRef} className="hidden" />
                 <p className="text-slate-500 text-xs text-center">
                   Aponte a câmara para o QR code gerado no painel de administração
