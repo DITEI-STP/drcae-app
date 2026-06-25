@@ -20,6 +20,8 @@ interface Props {
 
 type Mode = 'scan' | 'manual';
 
+const setupHref = `${import.meta.env.BASE_URL || '/app/'}setup`;
+
 export default function PairingScreen({ onRegistered }: Props) {
   const [mode, setMode] = useState<Mode>('scan');
   const [cameraError, setCameraError] = useState('');
@@ -268,6 +270,16 @@ export default function PairingScreen({ onRegistered }: Props) {
               <div className="bg-amber-900/30 border border-amber-700/40 rounded-2xl p-4 text-center space-y-3">
                 <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
                 <p className="text-amber-300 text-sm">{cameraError}</p>
+                <p className="text-amber-200/80 text-xs leading-5">
+                  Para usar a câmera em ambiente local, abra{' '}
+                  <a
+                    href={setupHref}
+                    className="font-semibold text-blue-300 underline underline-offset-2"
+                  >
+                    /setup
+                  </a>{' '}
+                  e configure um certificado local assinado.
+                </p>
                 <button
                   onClick={() => setMode('manual')}
                   className="text-blue-400 text-sm underline underline-offset-2"

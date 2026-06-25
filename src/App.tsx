@@ -16,6 +16,7 @@ import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
 import Equipe from './pages/Equipe';
 import PendentesPage from './pages/PendentesPage';
+import SetupPage from './pages/SetupPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap, Sun, Moon, Laptop } from 'lucide-react';
@@ -858,6 +859,11 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   );
 }
 
+function isSetupPath() {
+  const path = window.location.pathname.replace(/\/+$/, '');
+  return path === '/setup' || path === '/app/setup';
+}
+
 function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [nif, setNif] = useState(() => localStorage.getItem('drcae_officer_nif') || '');
   const [password, setPassword] = useState('');
@@ -1309,6 +1315,10 @@ export default function App() {
   const handleApproved = useCallback(() => {
     setSessionState('launching');
   }, []);
+
+  if (isSetupPath()) {
+    return <SetupPage />;
+  }
 
   // Estados de sessão antes do login
   if (sessionState === 'checking' || sessionState === 'launching') {
