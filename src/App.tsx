@@ -1090,18 +1090,26 @@ function WaitingApprovalScreen({
   const deviceCode = creds?.device_code ?? '—';
 
   useEffect(() => {
-    const poll = setInterval(async () => {
+    // Verificação imediata + polling periódico
+    let cancelled = false;
+
+    async function check() {
       try {
         const status = await api.checkDeviceStatus();
-        if ((status as any).approved) {
-          clearInterval(poll);
+        if (status.paired && !cancelled) {
           onApproved();
         }
       } catch {
         // falha de rede — tentar novamente no próximo ciclo
       }
-    }, 10_000);
-    return () => clearInterval(poll);
+    }
+
+    check(); // verificar imediatamente ao montar
+    const poll = setInterval(check, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, [onApproved]);
 
   return (
@@ -1197,12 +1205,21 @@ export default function App() {
         return;
       }
 
-      // 4. Sem sessão — verificar credenciais de emparelhamento guardadas
+      // 4. Se a app está a correr dentro do webview nativo (DrcaeWebview), não mostrar pairing screen.
+      //    O webview nativo gere o emparelhamento; se não há sessão, a app nativa irá reiniciar o fluxo.
+      const isNativeWebview = /DrcaeWebview\//i.test(navigator.userAgent);
+      if (isNativeWebview) {
+        // Mostrar spinner; o webview nativo vai recarregar com ?wvt= quando pronto
+        setSessionState('checking');
+        return;
+      }
+
+      // 5. Sem sessão — verificar credenciais de emparelhamento guardadas
       const creds = getPairingCredentials();
       if (creds) {
         try {
           const status = await api.checkDeviceStatus();
-          if ((status as any).approved) {
+          if (status.paired) {
             setSessionState('launching');
           } else {
             setSessionState('waiting_approval');
@@ -1213,7 +1230,7 @@ export default function App() {
         return;
       }
 
-      // 5. Nenhuma credencial — emparelhamento necessário
+      // 6. Nenhuma credencial — emparelhamento necessário
       setSessionState('needs_pairing');
     }
 
@@ -1306,7 +1323,13 @@ export default function App() {
   }
 
   if (sessionState === 'needs_pairing') {
-    return <PairingScreen onRegistered={() => setSessionState('waiting_approval')} />;
+    return (
+      <PairingScreen
+        onRegistered={(autoApproved) =>
+          setSessionState(autoApproved ? 'launching' : 'waiting_approval')
+        }
+      />
+    );
   }
 
   if (sessionState === 'waiting_approval') {

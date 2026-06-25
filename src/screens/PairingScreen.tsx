@@ -4,7 +4,7 @@ import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw } from 'lucid
 import * as api from '../lib/api';
 import {
   collectBrowserDeviceInfo,
-  generateDefaultAlias,
+  generateDeviceAlias,
   storePairingCredentials,
 } from '../lib/pairing';
 
@@ -15,7 +15,7 @@ interface QRPayload {
 }
 
 interface Props {
-  onRegistered: () => void;
+  onRegistered: (autoApproved: boolean) => void;
 }
 
 type Mode = 'scan' | 'manual';
@@ -26,7 +26,7 @@ export default function PairingScreen({ onRegistered }: Props) {
 
   const [manualCode, setManualCode] = useState('');
   const [manualEndpoint, setManualEndpoint] = useState(window.location.origin);
-  const [alias, setAlias] = useState('');
+  const [alias, setAlias] = useState(() => generateDeviceAlias());
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -108,7 +108,7 @@ export default function PairingScreen({ onRegistered }: Props) {
 
   async function handleSubmit(code: string, endpoint: string) {
     const deviceId = api.getDeviceId();
-    const deviceAlias = alias.trim() || generateDefaultAlias();
+    const deviceAlias = alias.trim() || generateDeviceAlias();
     const deviceInfo = collectBrowserDeviceInfo(deviceId);
 
     setLoading(true);
@@ -124,7 +124,13 @@ export default function PairingScreen({ onRegistered }: Props) {
         endpoint,
         paired_at: new Date().toISOString(),
       });
-      onRegistered();
+      // Verificar se já foi auto-aprovado
+      let autoApproved = false;
+      try {
+        const status = await api.checkDeviceStatus();
+        autoApproved = status.paired;
+      } catch {}
+      onRegistered(autoApproved);
     } catch (err: any) {
       setError(err.message || 'Falha ao emparelhar. Verifique o código e tente novamente.');
       scannedRef.current = false;
@@ -228,12 +234,12 @@ export default function PairingScreen({ onRegistered }: Props) {
             {/* Campo alias (scan) */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
-                Nome do dispositivo <span className="font-normal text-slate-600">(opcional)</span>
+                Nome do dispositivo
               </label>
               <input
                 type="text"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-                placeholder={generateDefaultAlias()}
+                placeholder="Ex: Falcao Dourado"
                 value={alias}
                 onChange={e => setAlias(e.target.value)}
                 maxLength={60}
@@ -280,12 +286,12 @@ export default function PairingScreen({ onRegistered }: Props) {
             {/* Alias */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
-                Nome do dispositivo <span className="font-normal text-slate-600">(opcional)</span>
+                Nome do dispositivo
               </label>
               <input
                 type="text"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-                placeholder={generateDefaultAlias()}
+                placeholder="Ex: Falcao Dourado"
                 value={alias}
                 onChange={e => setAlias(e.target.value)}
                 maxLength={60}

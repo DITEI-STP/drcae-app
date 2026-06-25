@@ -76,8 +76,25 @@ export function collectBrowserDeviceInfo(deviceId: string): DeviceInfo {
   };
 }
 
+const ALIAS_ANIMALS = [
+  'Aguia', 'Leao', 'Tigre', 'Pantera', 'Lobo', 'Falcao',
+  'Gaviao', 'Lince', 'Urso', 'Cobra', 'Corvo', 'Lince',
+  'Raposa', 'Jaguar', 'Puma', 'Guepardo', 'Bufalo', 'Alce',
+];
+const ALIAS_ADJECTIVES = [
+  'Azul', 'Dourado', 'Veloz', 'Forte', 'Bravo', 'Fiel',
+  'Nobre', 'Agil', 'Vivo', 'Livre', 'Firme', 'Audaz',
+  'Sereno', 'Solido', 'Rapido', 'Sagaz',
+];
+
+export function generateDeviceAlias(): string {
+  const adj = ALIAS_ADJECTIVES[Math.floor(Math.random() * ALIAS_ADJECTIVES.length)];
+  const animal = ALIAS_ANIMALS[Math.floor(Math.random() * ALIAS_ANIMALS.length)];
+  return `${adj} ${animal}`;
+}
+
 export function generateDefaultAlias(): string {
-  return `${getBrowserName()} em ${getOSName()}`;
+  return generateDeviceAlias();
 }
 
 export function storePairingCredentials(creds: PairingCredentials): void {
