@@ -241,26 +241,26 @@ export default function NovaVisita() {
 
   if (equipeNaoDefinida) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-screen font-sans">
-         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-8 space-y-6 text-center">
-            <div className="w-16 h-16 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm animate-bounce">
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950 min-h-screen font-sans">
+         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-md w-full overflow-hidden p-8 space-y-6 text-center">
+            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-sm animate-bounce">
                <AlertTriangle className="w-8 h-8 animate-pulse" />
             </div>
             <div className="space-y-2">
-               <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Definição de Equipa Obrigatória</h3>
-               <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                  De acordo com os protocolos jurídicos da <b>DRCAE</b>, é estritamente obrigatório definir e validar a composição da equipa de agentes destacados para o serviço diário, pelo menos uma vez, antes de proceder ao registo de nova fiscalização ou cadastro de operador económico.
+               <h3 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Definição de Equipa Obrigatória</h3>
+               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+                  De acordo com os protocolos jurídicos da <b className="dark:text-slate-300">DRCAE</b>, é estritamente obrigatório definir e validar a composição da equipa de agentes destacados para o serviço diário, pelo menos uma vez, antes de proceder ao registo de nova fiscalização ou cadastro de operador económico.
                </p>
             </div>
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-3">
-               <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center shrink-0 text-amber-700 font-bold text-xs font-mono">!</div>
-               <p className="text-[11px] text-slate-600 font-semibold text-left leading-normal">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-start gap-3">
+               <div className="w-6 h-6 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center shrink-0 text-amber-700 dark:text-amber-400 font-bold text-xs font-mono">!</div>
+               <p className="text-[11px] text-slate-600 dark:text-slate-400 font-semibold text-left leading-normal">
                   Esta medida de conformidade garante que as contraordenações e atas emitidas possuam força jurídica probatória inequívoca.
                </p>
             </div>
             <button
                onClick={() => navigate('/equipe')}
-               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-100 uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
             >
                <Users className="w-4 h-4 text-white" />
                Configurar Equipa Técnica
@@ -674,7 +674,7 @@ export default function NovaVisita() {
                       value={representante}
                       onChange={e => setRepresentante(e.target.value)}
                       placeholder="Nome do representante..."
-                      className="w-full p-4 bg-slate-50 dark:bg-slate-855 border border-slate-200 dark:border-slate-800 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-semibold text-slate-800 dark:text-slate-150 transition-all outline-none"
+                      className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-semibold text-slate-800 dark:text-slate-100 transition-all outline-none"
                     />
                   </div>
                   
@@ -815,30 +815,30 @@ export default function NovaVisita() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
              
              {/* Equipa de Fiscalização */}
-             <div className="space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+             <div className="space-y-6 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="space-y-1">
                    <div className="flex items-center gap-2 mb-1">
-                      <Users className="w-5 h-5 text-indigo-600" />
-                      <h3 className="font-bold text-base text-slate-800">Confirmar Equipa de Fiscalização</h3>
+                      <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Confirmar Equipa de Fiscalização</h3>
                    </div>
-                   <p className="text-xs text-slate-500 font-medium font-sans">
+                   <p className="text-xs text-slate-500 dark:text-slate-400 font-medium font-sans">
                       Confirme os agentes escalados para esta ação. É obrigatória a presença de pelo menos 1 fiscal.
                    </p>
                 </div>
 
                 <div className="space-y-2.5">
                    {technicians.map((tech, idx) => (
-                      <div key={tech} className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div key={tech} className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
                          <div className="flex items-center gap-2.5">
-                            <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-[10px] font-bold">
                                {idx + 1}
                             </div>
-                            <span className="text-sm font-bold text-slate-700">{tech}</span>
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{tech}</span>
                          </div>
                          <button
                             type="button"
                             onClick={() => setTechnicians(prev => prev.filter(t => t !== tech))}
-                            className="p-1.5 text-[10px] text-red-500 hover:bg-red-50 hover:text-red-700 font-bold rounded-lg transition-colors border border-transparent hover:border-red-100"
+                            className="p-1.5 text-[10px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-400 font-bold rounded-lg transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900/50"
                          >
                             Remover
                          </button>
@@ -846,14 +846,14 @@ export default function NovaVisita() {
                    ))}
 
                    {technicians.length === 0 && (
-                      <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center text-xs text-red-700 font-semibold">
+                      <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-xl text-center text-xs text-red-700 dark:text-red-400 font-semibold">
                          Atenção: Deve definir pelo menos um agente fiscalizador para prosseguir!
                       </div>
                    )}
                 </div>
 
                 {/* Add member on the fly */}
-                <div className="pt-4 border-t border-slate-100 space-y-2">
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Co-Fiscalizador</label>
                    <div className="flex gap-2">
                       <input
@@ -871,7 +871,7 @@ export default function NovaVisita() {
                                }
                             }
                          }}
-                         className="flex-1 p-3 text-xs bg-slate-50 border border-slate-200 focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold rounded-xl"
+                         className="flex-1 p-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-semibold rounded-xl"
                       />
                       <button
                          type="button"
@@ -892,10 +892,10 @@ export default function NovaVisita() {
              </div>
 
              {location && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-1.5 text-center">
-                   <MapPin className="w-5 h-5 text-indigo-500 animate-bounce" />
+                <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center gap-1.5 text-center">
+                   <MapPin className="w-5 h-5 text-indigo-500 dark:text-indigo-400 animate-bounce" />
                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Coordenadas de Ingressos do Agente</p>
-                   <p className="text-xs text-slate-700 font-mono font-bold">Lat: {location.lat.toFixed(5)} | Lng: {location.lng.toFixed(5)}</p>
+                   <p className="text-xs text-slate-700 dark:text-slate-200 font-mono font-bold">Lat: {location.lat.toFixed(5)} | Lng: {location.lng.toFixed(5)}</p>
                 </div>
              )}
           </div>
@@ -1032,9 +1032,9 @@ export default function NovaVisita() {
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
              
-             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                <h3 className="font-bold text-base text-slate-800">Recomendações do Agente</h3>
-                <p className="text-xs text-slate-500 font-medium font-sans">
+             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+                <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Recomendações do Agente</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium font-sans">
                    Selecione as recomendações pedagógicas de asseio ou conformidade legal pré-cadastradas para aplicar neste operador, ou adicione itens à medida das necessidades do local.
                 </p>
              </div>
@@ -1139,17 +1139,17 @@ export default function NovaVisita() {
                             className={cn(
                                "p-4 rounded-xl border flex items-start gap-3 cursor-pointer transition-colors",
                                isSelected 
-                                 ? "bg-indigo-50 border-indigo-400 shadow-sm" 
-                                 : "bg-white border-slate-200 hover:bg-slate-50"
+                                 ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400 dark:border-indigo-500 shadow-sm" 
+                                 : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
                             )}
                          >
                             <div className={cn(
                                "w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5",
-                               isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300"
+                               isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600"
                             )}>
                                {isSelected && <Check className="w-3 h-3 text-white font-bold" />}
                             </div>
-                            <p className={cn("text-xs leading-relaxed font-semibold", isSelected ? "text-indigo-900 font-bold" : "text-slate-700")}>
+                            <p className={cn("text-xs leading-relaxed font-semibold", isSelected ? "text-indigo-900 dark:text-indigo-200 font-bold" : "text-slate-700 dark:text-slate-300")}>
                                {rec}
                             </p>
                          </div>
@@ -1159,7 +1159,7 @@ export default function NovaVisita() {
              </div>
 
              {/* Custom Recommendation */}
-             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Recomendação Customizada/Personalizada</label>
                 <div className="flex gap-2">
                    <input
@@ -1179,7 +1179,7 @@ export default function NovaVisita() {
                             }
                          }
                       }}
-                      className="flex-1 p-3.5 text-xs bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 text-slate-800 font-semibold rounded-xl"
+                      className="flex-1 p-3.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-semibold rounded-xl"
                    />
                    <button
                       type="button"
@@ -1192,7 +1192,7 @@ export default function NovaVisita() {
                             setCustomRecommendation('');
                          }
                       }}
-                      className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                    >
                       Adicionar
                    </button>
@@ -1201,16 +1201,16 @@ export default function NovaVisita() {
 
              {/* Selected display */}
              {recomendacoes.length > 0 && (
-                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-2">
-                   <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Recomendações a Emitir ({recomendacoes.length})</p>
+                <div className="bg-indigo-50/50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 space-y-2">
+                   <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-widest">Recomendações a Emitir ({recomendacoes.length})</p>
                    <ul className="space-y-1.5">
                       {recomendacoes.map((rec, i) => (
-                         <li key={i} className="text-xs font-semibold text-indigo-950 flex justify-between items-start gap-2 bg-white/60 p-2.5 rounded-lg border border-indigo-100">
+                         <li key={i} className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 flex justify-between items-start gap-2 bg-white/60 dark:bg-slate-800/60 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-800/50">
                             <span className="flex-1 leading-normal">• {rec}</span>
                             <button
                                type="button"
                                onClick={() => setRecomendacoes(prev => prev.filter(r => r !== rec))}
-                               className="text-[10px] text-red-500 hover:text-red-700 font-bold px-1"
+                               className="text-[10px] text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-bold px-1"
                             >
                                Remover
                             </button>
@@ -1264,11 +1264,11 @@ export default function NovaVisita() {
              {anexos.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 mt-4">
                    {anexos.map((anx, i) => (
-                      <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
+                      <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-sm">
                          {anx.file.type.startsWith('image/') ? (
                             <img src={anx.url} alt="anexo" className="w-full h-full object-cover" />
                          ) : (
-                            <div className="flex h-full items-center justify-center bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">{anx.file.name.split('.').pop()}</div>
+                            <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">{anx.file.name.split('.').pop()}</div>
                          )}
                          <button onClick={() => removeAnexo(i)} className="absolute top-2 right-2 bg-slate-900/60 backdrop-blur-sm text-white rounded-full p-1 hover:bg-slate-900/80 transition-colors">
                             <X className="w-3.5 h-3.5" />
@@ -1278,14 +1278,14 @@ export default function NovaVisita() {
                 </div>
              )}
 
-             <div className="space-y-2 mt-8 border-t border-slate-100 pt-6">
+             <div className="space-y-2 mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações Detalhadas</label>
                 <textarea 
                   rows={4}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   placeholder="Descreva a situação encontrada no local..."
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium text-slate-800"
+                  className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-medium text-slate-800 dark:text-slate-100"
                 />
              </div>
           </div>
@@ -1383,50 +1383,50 @@ export default function NovaVisita() {
         {/* STEP 7 — Revisão e Auto-Certificação */}
         {step === 7 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 pb-12">
-             <div className="bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-800 p-6 rounded-2xl border border-emerald-200 flex flex-col items-center text-center shadow-xs">
-                <CheckCircle className="w-12 h-12 mb-2 text-emerald-600 animate-pulse" />
-                <h3 className="font-extrabold text-lg text-slate-800">Revisão e Auto-Certificação</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm font-semibold leading-relaxed">
+             <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 text-emerald-800 dark:text-emerald-300 p-6 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex flex-col items-center text-center shadow-xs">
+                <CheckCircle className="w-12 h-12 mb-2 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                <h3 className="font-extrabold text-lg text-slate-800 dark:text-slate-100">Revisão e Auto-Certificação</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm font-semibold leading-relaxed">
                    Verifique com rigor todas as evidências e declarações recolhidas antes de submeter a ata de fiscalização.
                 </p>
              </div>
 
              {/* Informações Gerais & Operador */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-3xs font-sans">
-                <div className="border-b border-slate-100 pb-2">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs font-sans">
+                <div className="border-b border-slate-100 dark:border-slate-800 pb-2">
                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-left">Identidade do Operador</h4>
-                   <h3 className="text-base font-black text-slate-800 mt-0.5 text-left text-wrap leading-tight">
+                   <h3 className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 text-left text-wrap leading-tight">
                       {firmas?.find(f => f.id === firmaId)?.name || 'N/A'}
                    </h3>
-                   <p className="text-xs text-slate-500 font-medium text-left mt-1">
-                      Atividade Principal em Vistoria: <span className="font-bold text-slate-700">{atividadeEconomica || 'N/A'}</span>
+                   <p className="text-xs text-slate-500 dark:text-slate-400 font-medium text-left mt-1">
+                      Atividade Principal em Vistoria: <span className="font-bold text-slate-700 dark:text-slate-200">{atividadeEconomica || 'N/A'}</span>
                    </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-xs font-sans text-left">
                    <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data e Hora do Registo</p>
-                      <p className="font-bold text-slate-700 mt-0.5">{date} às {time}</p>
+                      <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">{date} às {time}</p>
                    </div>
                    {representante && (
                       <div>
                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-wrap">Declarou perante</p>
-                         <p className="font-bold text-slate-700 mt-0.5">{representante}</p>
+                         <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">{representante}</p>
                       </div>
                    )}
                 </div>
              </div>
 
              {/* Equipa Destacada */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
-                <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest flex items-center gap-1">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
+                <h4 className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1">
                    <Users className="w-3.5 h-3.5 animate-pulse" />
                    Técnicos de Serviço Diário ({technicians.length})
                 </h4>
                 <div className="flex flex-wrap gap-2 pt-1">
                    {technicians.map((tech, idx) => (
-                      <span key={idx} className="text-xs font-semibold px-2.5 py-1.5 bg-indigo-50 text-indigo-900 border border-indigo-100 rounded-xl flex items-center gap-1">
-                         <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                      <span key={idx} className="text-xs font-semibold px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 border border-indigo-100 dark:border-indigo-800 rounded-xl flex items-center gap-1">
+                         <div className="w-1.5 h-1.5 bg-indigo-500 dark:bg-indigo-400 rounded-full" />
                          {tech}
                       </span>
                    ))}
@@ -1434,18 +1434,18 @@ export default function NovaVisita() {
              </div>
 
              {/* Georreferenciação da Atividade (Mapa) */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                   <Map className="w-3.5 h-3.5 text-blue-600" />
+                   <Map className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                    Georreferenciação Localizada (Ata de Visita)
                 </h4>
                 {location ? (
                    <div className="space-y-3">
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px] font-mono text-slate-600 flex justify-between items-center">
+                      <div className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700 text-[11px] font-mono text-slate-600 dark:text-slate-300 flex justify-between items-center">
                          <span>Lat: {location.lat.toFixed(6)}</span>
                          <span>Lng: {location.lng.toFixed(6)}</span>
                       </div>
-                      <div className="rounded-xl border border-slate-200 overflow-hidden h-[200px] w-full bg-slate-100 relative">
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden h-[200px] w-full bg-slate-100 dark:bg-slate-800 relative">
                          <iframe
                             title="Mapa Coleta Ponto"
                             width="100%"
@@ -1462,12 +1462,12 @@ export default function NovaVisita() {
                          const isMissingCoordinates = selectedFirma && (!selectedFirma.geolocation || !(selectedFirma.atividades?.find(a => a.atividade === atividadeEconomica)?.geolocation));
                          if (isMissingCoordinates) {
                             return (
-                               <div className="mt-3 p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs font-semibold leading-relaxed flex items-start gap-2.5 shadow-3xs">
-                                  <MapPin className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-bounce" />
+                               <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 rounded-xl text-xs font-semibold leading-relaxed flex items-start gap-2.5 shadow-3xs">
+                                  <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 animate-bounce" />
                                   <div>
-                                     <p className="font-extrabold text-amber-950 uppercase tracking-wide text-[9px] mb-0.5">Captura de Ponto do Operador Ativa</p>
-                                     <p className="text-slate-600 leading-normal">
-                                        Este operador não tem coordenadas registadas. Ao finalizar, as coordenadas atuais <span className="font-bold text-slate-800">({location.lat.toFixed(5)}, {location.lng.toFixed(5)})</span> serão guardadas automaticamente como o ponto oficial de <b>{selectedFirma.name}</b>.
+                                     <p className="font-extrabold text-amber-950 dark:text-amber-300 uppercase tracking-wide text-[9px] mb-0.5">Captura de Ponto do Operador Ativa</p>
+                                     <p className="text-slate-600 dark:text-slate-300 leading-normal">
+                                        Este operador não tem coordenadas registadas. Ao finalizar, as coordenadas atuais <span className="font-bold text-slate-800 dark:text-slate-100">({location.lat.toFixed(5)}, {location.lng.toFixed(5)})</span> serão guardadas automaticamente como o ponto oficial de <b className="dark:text-slate-200">{selectedFirma.name}</b>.
                                      </p>
                                   </div>
                                </div>
@@ -1477,9 +1477,9 @@ export default function NovaVisita() {
                       })()}
                    </div>
                 ) : (
-                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-center text-xs space-y-2">
-                      <p className="text-amber-800 font-bold">Sem Sinal GPS Ativo</p>
-                      <p className="text-amber-700 font-medium leading-relaxed">
+                   <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-900/40 text-center text-xs space-y-2">
+                      <p className="text-amber-800 dark:text-amber-400 font-bold">Sem Sinal GPS Ativo</p>
+                      <p className="text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
                         {isWebviewMode()
                           ? 'A aguardar dados de localização do dispositivo nativo. Certifique-se de que o GPS está ativo.'
                           : 'As coordenadas não puderam ser obtidas. Certifique-se de que o browser tem ativa a permissão de localização.'}
@@ -1496,27 +1496,27 @@ export default function NovaVisita() {
              </div>
 
              {/* Infrações Registadas */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-3xs font-sans text-left">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                   <h4 className="text-[10px] font-bold text-red-600 uppercase tracking-widest flex items-center gap-1">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs font-sans text-left">
+                <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                   <h4 className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest flex items-center gap-1">
                       <AlertTriangle className="w-4 h-4" />
                       Não Conformidades detetadas ({infracoes.length})
                    </h4>
                 </div>
                 {infracoes.length === 0 ? (
-                   <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-center text-xs font-semibold text-emerald-800">
+                   <div className="p-3 bg-emerald-50/50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40 rounded-xl text-center text-xs font-semibold text-emerald-800 dark:text-emerald-400">
                       ✅ Nenhuma infração detetada nesta verificação.
                    </div>
                 ) : (
                    <div className="space-y-3">
                       {infracoes.map((inf, i) => (
-                         <div key={i} className="p-3 bg-red-50/30 border border-red-100 rounded-xl space-y-1">
+                         <div key={i} className="p-3 bg-red-50/30 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-xl space-y-1">
                             <div className="flex justify-between items-start gap-2">
-                               <p className="font-extrabold text-xs text-slate-800 leading-normal">{inf.type}</p>
+                               <p className="font-extrabold text-xs text-slate-800 dark:text-slate-100 leading-normal">{inf.type}</p>
                                <span className={cn(
                                   "text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 leading-none",
                                   inf.severity === 'Crítica' ? "bg-red-600 text-white animate-pulse" :
-                                  inf.severity === 'Alta' ? "bg-orange-100 text-orange-950" : "bg-amber-100 text-amber-950"
+                                  inf.severity === 'Alta' ? "bg-orange-100 dark:bg-orange-900/40 text-orange-950 dark:text-orange-300" : "bg-amber-100 dark:bg-amber-900/40 text-amber-950 dark:text-amber-300"
                                )}>{inf.severity}</span>
                             </div>
                          </div>
@@ -1526,8 +1526,8 @@ export default function NovaVisita() {
              </div>
 
              {/* Recomendações Emitidas */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
-                <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
+                <h4 className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1">
                    ✦ Recomendações Aplicadas ao Operador ({recomendacoes.length})
                 </h4>
                 {recomendacoes.length === 0 ? (
@@ -1535,8 +1535,8 @@ export default function NovaVisita() {
                 ) : (
                    <ul className="space-y-2">
                       {recomendacoes.map((rec, i) => (
-                         <li key={i} className="text-xs font-semibold text-slate-700 flex gap-2 items-start leading-relaxed bg-slate-50/70 p-3 rounded-xl border border-slate-100 text-left">
-                            <span className="text-indigo-600 font-black">•</span>
+                         <li key={i} className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex gap-2 items-start leading-relaxed bg-slate-50/70 dark:bg-slate-800/70 p-3 rounded-xl border border-slate-100 dark:border-slate-700 text-left">
+                            <span className="text-indigo-600 dark:text-indigo-400 font-black">•</span>
                             <span className="flex-1">{rec}</span>
                          </li>
                       ))}
@@ -1545,7 +1545,7 @@ export default function NovaVisita() {
              </div>
 
              {/* Provas em Miniaturas e Pré-Visualização */}
-             <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
+             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                    Evidências Anexadas ({anexos.length})
                 </h4>
@@ -1563,7 +1563,7 @@ export default function NovaVisita() {
                                   toast.info(`Ficheiro de tipo ${anx.file.type || 'desconhecido'}: ${anx.file.name}`);
                                }
                             }}
-                            className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:border-indigo-400 hover:scale-105 transition-all shadow-3xs group"
+                            className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 hover:scale-105 transition-all shadow-3xs group"
                          >
                             {anx.file.type.startsWith('image/') ? (
                                <>
@@ -1571,7 +1571,7 @@ export default function NovaVisita() {
                                   <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[9px] text-white font-bold uppercase transition-opacity">Ver</div>
                                </>
                             ) : (
-                               <div className="flex flex-col h-full items-center justify-center p-1 bg-slate-50 text-[10px] font-black text-slate-500 uppercase leading-normal">
+                               <div className="flex flex-col h-full items-center justify-center p-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase leading-normal">
                                   <span className="text-indigo-500 font-mono">{anx.file.name.split('.').pop()}</span>
                                   <span className="text-[8px] tracking-tight font-sans text-slate-400 mt-1 truncate max-w-full">{anx.file.name}</span>
                                 </div>
@@ -1584,21 +1584,21 @@ export default function NovaVisita() {
 
              {/* Observações */}
              {notes && (
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-2 shadow-3xs font-sans text-left">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-2 shadow-3xs font-sans text-left">
                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações Gerais</h4>
-                   <p className="text-xs text-slate-700 font-medium leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">{notes}</p>
+                   <p className="text-xs text-slate-700 dark:text-slate-200 font-medium leading-relaxed bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 whitespace-pre-wrap">{notes}</p>
                 </div>
              )}
 
              {/* PREVIEW MODAL */}
              {selectedPreview && (
                 <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-250">
-                   <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl w-full overflow-hidden shadow-2xl relative p-3 animate-in zoom-in-95 duration-250 flex flex-col">
-                      <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100 mb-2">
-                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Evidência Fotográfica</span>
+                   <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full overflow-hidden shadow-2xl relative p-3 animate-in zoom-in-95 duration-250 flex flex-col">
+                      <div className="flex justify-between items-center px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 mb-2">
+                         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Evidência Fotográfica</span>
                          <button 
                             onClick={() => setSelectedPreview(null)}
-                            className="p-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-full text-xs transition-colors"
+                            className="p-1.5 px-3 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 font-bold rounded-full text-xs transition-colors"
                          >
                             Fechar
                          </button>

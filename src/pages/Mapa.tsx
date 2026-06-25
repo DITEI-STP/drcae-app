@@ -256,15 +256,15 @@ export default function Mapa() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#F5F7FA]">
-      <div className="px-4 py-4 border-b border-slate-200 shrink-0 sticky top-0 bg-white z-10 flex items-center justify-between shadow-sm">
+    <div className="flex flex-col h-full bg-[#F5F7FA] dark:bg-slate-950">
+      <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 sticky top-0 bg-white dark:bg-slate-900 z-10 flex items-center justify-between shadow-sm">
          <div className="flex items-center gap-3">
             {selectedFirmaId && (
-               <button onClick={() => { setSelectedFirmaId(null); setIsNavigating(false); }} className="text-slate-500 hover:text-slate-900">
+               <button onClick={() => { setSelectedFirmaId(null); setIsNavigating(false); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
                   <ArrowLeft className="w-5 h-5" />
                </button>
             )}
-            <h2 className="font-bold text-slate-900 tracking-tight">
+            <h2 className="font-bold text-slate-900 dark:text-slate-100 tracking-tight">
                {selectedFirma ? "Visualizador de Rota" : "Mapa e Rotas"}
             </h2>
          </div>
@@ -289,12 +289,12 @@ export default function Mapa() {
                         value={searchQuery}
                         onChange={e => handleSearchChange(e.target.value)}
                         placeholder="Pesquisar por designação, NIF, distrito ou morada..."
-                        className="w-full pl-10 pr-10 py-3 bg-white text-sm text-slate-800 rounded-xl border border-slate-200 focus:outline-hidden shadow-xs"
+                        className="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-hidden shadow-xs placeholder-slate-400"
                      />
                      {searchQuery && (
                         <button
                            onClick={() => handleSearchChange('')}
-                           className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 text-xs font-bold font-mono"
+                           className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold font-mono"
                         >
                            Limpar
                         </button>
@@ -330,8 +330,8 @@ export default function Mapa() {
                   </div>
                </div>
 
-               <div className="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 flex items-center gap-3">
-                 <Navigation className="w-5 h-5 text-blue-600 shrink-0" />
+               <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400 p-4 rounded-xl border border-blue-200 dark:border-blue-900/30 flex items-center gap-3">
+                 <Navigation className="w-5 h-5 text-blue-600 dark:text-blue-500 shrink-0" />
                  <p className="text-sm font-medium">Selecione um operador económico abaixo para ver a sua geolocalização e traçar a rota diretamente na aplicação.</p>
                </div>
 
@@ -402,10 +402,10 @@ export default function Mapa() {
                   viewMode === 'grid' ? "grid grid-cols-2 md:grid-cols-3 gap-3" : "space-y-3"
                )}>
                   {paginatedFirmas.length === 0 ? (
-                     <div className="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2 w-full">
-                        <MapPin className="w-8 h-8 text-slate-300 mx-auto" />
-                        <p className="text-sm font-bold text-slate-600">Nenhum operador económico encontrado</p>
-                        <p className="text-xs text-slate-400">Tente cadastrar um novo operador ou limpe os filtros.</p>
+                     <div className="col-span-full bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 text-center space-y-2 w-full">
+                        <MapPin className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                        <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Nenhum operador económico encontrado</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">Tente cadastrar um novo operador ou limpe os filtros.</p>
                      </div>
                   ) : (
                      paginatedFirmas.map(firma => {
@@ -414,32 +414,32 @@ export default function Mapa() {
                         if (viewMode === 'grid') {
                            return (
                               <div 
-                                key={firma.id} 
-                                onClick={() => setSelectedFirmaId(firma.id!)}
-                                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group gap-3.5 min-h-[160px]"
-                              >
-                                 <div className="flex justify-between items-start w-full gap-2">
-                                    <div className={cn(
-                                       "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs",
-                                       hasSomeGps ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
-                                    )}>
-                                       <MapPin className="w-5 h-5" />
-                                    </div>
-                                    <button className="w-8 h-8 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-600 rounded-full flex items-center justify-center transition-all shrink-0">
-                                       <Navigation className="w-3.5 h-3.5" />
-                                    </button>
-                                 </div>
-                                 <div className="min-w-0 text-left">
-                                    <h3 className="font-bold text-slate-900 leading-tight truncate group-hover:text-blue-600">{firma.name}</h3>
-                                    <p className="text-xs text-slate-505 truncate mt-0.5">{firma.address || `${firma.district}, São Tomé`}</p>
-                                 </div>
-                                 <span className={cn(
-                                    "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start inline-block",
-                                    hasSomeGps ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
-                                 )}>
-                                    {hasSomeGps ? "📍 Coordenadas" : "NIF: " + (firma.nif || "Formal")}
-                                 </span>
-                              </div>
+                                 key={firma.id} 
+                                 onClick={() => setSelectedFirmaId(firma.id!)}
+                                 className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all group gap-3.5 min-h-[160px]"
+                               >
+                                  <div className="flex justify-between items-start w-full gap-2">
+                                     <div className={cn(
+                                        "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs",
+                                        hasSomeGps ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                                     )}>
+                                        <MapPin className="w-5 h-5" />
+                                     </div>
+                                     <button className="w-8 h-8 bg-blue-50 dark:bg-blue-900/30 group-hover:bg-blue-600 group-hover:text-white text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center transition-all shrink-0">
+                                        <Navigation className="w-3.5 h-3.5" />
+                                     </button>
+                                  </div>
+                                  <div className="min-w-0 text-left">
+                                     <h3 className="font-bold text-slate-900 dark:text-slate-100 leading-tight truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{firma.name}</h3>
+                                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{firma.address || `${firma.district}, São Tomé`}</p>
+                                  </div>
+                                  <span className={cn(
+                                     "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start inline-block",
+                                     hasSomeGps ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                  )}>
+                                     {hasSomeGps ? "📍 Coordenadas" : "NIF: " + (firma.nif || "Formal")}
+                                  </span>
+                               </div>
                            );
                         }
 
@@ -448,27 +448,27 @@ export default function Mapa() {
                            <div 
                              key={firma.id} 
                              onClick={() => setSelectedFirmaId(firma.id!)}
-                             className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group"
+                             className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all group"
                            >
                               <div className="flex items-center gap-4 min-w-0">
                                  <div className={cn(
                                     "w-12 h-12 rounded-full flex items-center justify-center shrink-0 shadow-xs",
-                                    hasSomeGps ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                                    hasSomeGps ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-400"
                                  )}>
                                     <MapPin className="w-6 h-6" />
                                  </div>
                                  <div className="flex-1 min-w-0 text-left">
-                                    <h3 className="font-bold text-slate-900 truncate group-hover:text-blue-600">{firma.name}</h3>
-                                    <p className="text-xs text-slate-500 truncate">{firma.address || `${firma.district}, São Tomé`}</p>
+                                    <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">{firma.name}</h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{firma.address || `${firma.district}, São Tomé`}</p>
                                     <span className={cn(
                                        "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 inline-block",
-                                       hasSomeGps ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                                       hasSomeGps ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
                                     )}>
                                        {hasSomeGps ? "📍 Coordenadas Gravadas" : "NIF: " + (firma.nif || "Formal")}
                                     </span>
                                  </div>
                               </div>
-                              <button className="w-10 h-10 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-600 rounded-full flex items-center justify-center transition-all shrink-0">
+                              <button className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 group-hover:bg-blue-600 group-hover:text-white text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center transition-all shrink-0">
                                  <Navigation className="w-4 h-4" />
                               </button>
                            </div>
@@ -488,13 +488,13 @@ export default function Mapa() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                {/* Map View */}
                <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[320px] md:h-[480px]">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden h-[320px] md:h-[480px]">
                      {isOnline ? (
                        <iframe
                           title={`Mapa - ${selectedFirma.name}`}
                           width="100%"
                           height="100%"
-                          className="border-0 rounded-xl"
+                          className="border-0 rounded-xl dark:invert dark:hue-rotate-180 dark:brightness-95 dark:contrast-90"
                           src={getMapIframeSrc()}
                           allowFullScreen
                           loading="lazy"
@@ -517,17 +517,17 @@ export default function Mapa() {
 
                {/* Route Detail Panels */}
                <div className="space-y-4 flex flex-col">
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-blue-100 text-blue-800">Operador</span>
-                        <h3 className="text-lg font-bold text-slate-900 mt-1">{selectedFirma.name}</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">{selectedFirma.address || selectedFirma.district}</p>
+                        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400">Operador</span>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">{selectedFirma.name}</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedFirma.address || selectedFirma.district}</p>
 
                         {/* Active Operations Bar */}
-                        <div className="flex gap-2.5 mt-3 pt-3 border-t border-slate-100">
+                        <div className="flex gap-2.5 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                            <button
                               onClick={() => navigate(`/firmas/${selectedFirma.id}`)}
-                              className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] uppercase tracking-wider text-center border border-slate-200 transition-colors"
+                              className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-lg text-[10px] uppercase tracking-wider text-center border border-slate-200 dark:border-slate-700 transition-colors"
                            >
                               Ver Detalhes
                            </button>
@@ -541,7 +541,7 @@ export default function Mapa() {
 
                         {/* Atividades Mapeadas list */}
                         {selectedFirma.atividades && selectedFirma.atividades.filter(a => a.geolocation).length > 0 && (
-                           <div className="border-t border-slate-100 pt-3 mt-3 text-left">
+                           <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mt-3 text-left">
                               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Atividades Mapeadas ({selectedFirma.atividades.filter(a => a.geolocation).length})</span>
                               <div className="space-y-1.5 mt-2 max-h-[140px] overflow-y-auto custom-scrollbar">
                                  {/* Ponto principal */}
@@ -556,7 +556,7 @@ export default function Mapa() {
                                        "w-full text-left p-2 rounded-lg text-[11px] font-semibold flex items-center justify-between border transition-all",
                                        selectedAtividadeId === null 
                                          ? "bg-slate-900 text-white border-slate-950 font-black shadow-3xs"
-                                         : "bg-slate-50 hover:bg-slate-100 border-slate-200/60 text-slate-700"
+                                         : "bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200/60 dark:border-slate-700 text-slate-700 dark:text-slate-300"
                                     )}
                                  >
                                     <div className="flex items-center gap-1.5 truncate">
@@ -580,14 +580,14 @@ export default function Mapa() {
                                           "w-full text-left p-2 rounded-lg text-[11px] font-semibold flex items-center justify-between border transition-all",
                                           selectedAtividadeId === ativ.id 
                                             ? "bg-slate-900 text-white border-slate-950 font-black shadow-3xs"
-                                            : "bg-slate-50 hover:bg-slate-100 border-slate-200/60 text-slate-700"
+                                            : "bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200/60 dark:border-slate-700 text-slate-700 dark:text-slate-300"
                                        )}
                                     >
                                        <div className="flex items-center gap-1.5 truncate text-left">
                                           <Activity className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
                                           <span className="truncate">{ativ.atividade || 'Atividade específica'}</span>
                                        </div>
-                                       <span className="text-[8px] tracking-wide font-extrabold uppercase bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded shrink-0">Ativ</span>
+                                       <span className="text-[8px] tracking-wide font-extrabold uppercase bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 px-1 py-0.5 rounded shrink-0">Ativ</span>
                                     </button>
                                  ))}
                               </div>
@@ -595,36 +595,36 @@ export default function Mapa() {
                         )}
                      </div>
 
-                     <div className="grid grid-cols-2 gap-3 border-t border-b border-slate-100 py-3">
+                     <div className="grid grid-cols-2 gap-3 border-t border-b border-slate-100 dark:border-slate-800 py-3">
                         <div className="flex items-center gap-2">
                            <Compass className="w-5 h-5 text-indigo-600 shrink-0" />
                            <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Distância</p>
-                              <p className="font-bold text-slate-800 text-sm">{locInfo.distance} km</p>
+                              <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">{locInfo.distance} km</p>
                            </div>
                         </div>
                         <div className="flex items-center gap-2">
                            <Clock className="w-5 h-5 text-indigo-600 shrink-0" />
                            <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tempo Est.</p>
-                              <p className="font-bold text-slate-800 text-sm">{locInfo.time} mins</p>
+                              <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">{locInfo.time} mins</p>
                            </div>
                         </div>
                      </div>
 
                      <div className="space-y-3">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Instruções de Navegação</p>
-                        <div className="space-y-4 font-medium text-xs text-slate-700 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                        <div className="space-y-4 font-medium text-xs text-slate-700 dark:text-slate-300 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
                            {locInfo.steps.map((step, idx) => (
                               <div key={idx} className="flex gap-3">
                                  <div className="flex flex-col items-center">
-                                    <div className="w-5 h-5 rounded-full bg-slate-100 text-[10px] font-bold flex items-center justify-center text-slate-500 border border-slate-200 shrink-0">
+                                    <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold flex items-center justify-center text-slate-500 border border-slate-200 dark:border-slate-700 shrink-0">
                                        {idx + 1}
                                     </div>
-                                    {idx < locInfo.steps.length - 1 && <div className="w-0.5 h-6 bg-slate-200 mt-1" />}
+                                    {idx < locInfo.steps.length - 1 && <div className="w-0.5 h-6 bg-slate-200 dark:bg-slate-700 mt-1" />}
                                  </div>
                                  <div className="flex-1 min-w-0">
-                                    <p className="text-slate-800">{step.text}</p>
+                                    <p className="text-slate-800 dark:text-slate-200">{step.text}</p>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{step.dist}</p>
                                  </div>
                               </div>

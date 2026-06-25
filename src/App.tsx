@@ -706,6 +706,25 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
          <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
+               <div className="w-10 h-10 bg-blue-100 dark:bg-blue-950/40 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <Smartphone className="w-5 h-5" />
+               </div>
+               <div>
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100">Instalar Aplicação Móvel</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Descarregar ficheiro APK para instalação/atualização do dispositivo</p>
+               </div>
+            </div>
+            <a 
+              href="/api/app/webview/download" 
+              download 
+              className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 cursor-pointer flex items-center gap-1.5"
+            >
+              <DownloadCloud className="w-4 h-4" /> Descarregar
+            </a>
+         </div>
+
+         <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3 text-gray-700 dark:text-slate-350">
                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-950/40 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <DownloadCloud className="w-5 h-5" />
                </div>
@@ -1125,6 +1144,19 @@ function WebviewRequired({ onDevConnect }: { onDevConnect?: (sig: string) => voi
               Esta aplicação só está disponível através da app <strong className="text-slate-300">DRCAE</strong> instalada no dispositivo.
             </p>
             <p className="text-slate-600 text-xs mt-4">Acesso directo via browser não é permitido.</p>
+
+            <div className="mt-8 pt-6 border-t border-slate-800 space-y-4">
+              <p className="text-slate-400 text-xs leading-relaxed">
+                Se ainda não tem a aplicação instalada ou precisa de a atualizar, pode descarregar o APK aqui:
+              </p>
+              <a
+                href="/api/app/webview/download"
+                download
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 w-full cursor-pointer"
+              >
+                <DownloadCloud className="w-4 h-4" /> Descarregar APK da App
+              </a>
+            </div>
           </>
         )}
       </div>

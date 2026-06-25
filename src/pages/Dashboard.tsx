@@ -12,7 +12,8 @@ import {
   Activity, 
   ArrowRight, 
   ShieldAlert,
-  Plus
+  Plus,
+  DownloadCloud
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
@@ -143,6 +144,10 @@ export default function Dashboard() {
     };
   }, [], { firmas: 0, visitas: 0, infracoes: 0, pendingVisitas: 0, recentVisitas: [], recentFirmas: [] });
 
+  const isDirectBrowser = React.useMemo(() => {
+    return !window.navigator.userAgent.includes('DrcaeWebview');
+  }, []);
+
   const hasDefined = localStorage.getItem('drcae_equipe_definida') === 'true';
 
   const getGreeting = () => {
@@ -160,6 +165,30 @@ export default function Dashboard() {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-5 bg-[#F8FAFC] dark:bg-slate-950 pb-24">
       
+      {/* Browser Access Warning / APK Download Banner */}
+      {isDirectBrowser && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-900/50 dark:to-indigo-950/20 p-4 rounded-3xl border border-blue-100 dark:border-indigo-900/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-slate-700 dark:text-slate-350">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5 shadow-3xs">
+              <DownloadCloud className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm">Aceder através da App Oficial</h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold leading-relaxed mt-0.5">
+                Está a aceder via navegador. Para uma melhor experiência, suporte offline resiliente e integração nativa, instale a nossa aplicação móvel.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/api/app/webview/download"
+            download
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md transition-all shrink-0 cursor-pointer w-full sm:w-auto justify-center"
+          >
+            <span>Descarregar APK</span>
+          </a>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 rounded-3xl shadow-xl text-white relative overflow-hidden shrink-0 border border-indigo-900/40">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />

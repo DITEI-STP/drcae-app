@@ -132,11 +132,11 @@ export default function Equipe() {
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-850 dark:text-slate-100">Equipa Diária</h2>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Equipa Diária</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Configure a equipa de agentes de serviço para o dia de hoje.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 dark:bg-slate-955 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-semibold w-fit">
+        <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-semibold w-fit">
           <Calendar className="w-4 h-4 text-indigo-500" />
           <span className="capitalize">{todayFormatted}</span>
         </div>
@@ -189,7 +189,7 @@ export default function Equipe() {
                   className={cn(
                     'relative p-4 rounded-2xl border flex flex-col items-center text-center transition-all duration-300 hover:scale-[1.03] hover:shadow-md cursor-pointer group',
                     selected
-                      ? 'bg-indigo-50/50 dark:bg-indigo-950/15 border-indigo-650 dark:border-indigo-500 shadow-xs'
+                      ? 'bg-indigo-50/50 dark:bg-indigo-950/15 border-indigo-600 dark:border-indigo-500 shadow-xs'
                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-900/50 text-slate-700 dark:text-slate-300'
                   )}
                 >
@@ -197,8 +197,8 @@ export default function Equipe() {
                   <div className={cn(
                     'absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center transition-all duration-200',
                     selected
-                      ? 'bg-indigo-650 dark:bg-indigo-500 text-white scale-100'
-                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-transparent scale-90 group-hover:scale-100 group-hover:border-slate-300 dark:group-hover:border-slate-650'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 text-white scale-100'
+                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-transparent scale-90 group-hover:scale-100 group-hover:border-slate-300 dark:group-hover:border-slate-600'
                   )}>
                     <Check className={cn('w-3 h-3 transition-transform', selected ? 'scale-100' : 'scale-0')} />
                   </div>
@@ -212,7 +212,7 @@ export default function Equipe() {
                   </div>
 
                   {/* Officer Name */}
-                  <p className="text-xs font-extrabold text-slate-850 dark:text-slate-100 line-clamp-2 w-full leading-tight mb-1 min-h-[2rem] flex items-center justify-center">
+                  <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100 line-clamp-2 w-full leading-tight mb-1 min-h-[2rem] flex items-center justify-center">
                     {officer.name}
                   </p>
 
@@ -222,12 +222,12 @@ export default function Equipe() {
                       'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors mt-0.5',
                       selected
                         ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-550 dark:text-slate-400'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                     )}>
                       {officer.district}
                     </span>
                   ) : (
-                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-105 text-slate-400 mt-0.5 invisible">
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 mt-0.5 invisible">
                       -
                     </span>
                   )}
@@ -262,7 +262,7 @@ export default function Equipe() {
                     {initials}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-850 dark:text-slate-100">{member}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{member}</p>
                     <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-widest mt-0.5">Oficial de Fiscalização</p>
                   </div>
                 </div>
@@ -286,7 +286,7 @@ export default function Equipe() {
         </div>
 
         {/* Add new member form (manual / fallback offline) */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-955/50">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/50">
           <form onSubmit={handleAddMember} className="space-y-3">
             <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest block pl-1">Adicionar Agente Manualmente</label>
             <div className="flex gap-2">
@@ -295,11 +295,11 @@ export default function Equipe() {
                 placeholder="Exemplo: Agente Silva, Inspetor Carvalho"
                 value={newMemberName}
                 onChange={e => setNewMemberName(e.target.value)}
-                className="flex-1 p-3 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-805 dark:text-slate-100 font-semibold rounded-xl placeholder-slate-400 dark:placeholder-slate-550"
+                className="flex-1 p-3 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-semibold rounded-xl placeholder-slate-400 dark:placeholder-slate-500"
               />
               <button
                 type="submit"
-                className="px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer"
+                className="px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Adicionar
@@ -313,7 +313,7 @@ export default function Equipe() {
           <button
             type="button"
             onClick={handleConfirmarEquipeDirecto}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-650 dark:hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 dark:shadow-none uppercase tracking-widest cursor-pointer"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 dark:shadow-none uppercase tracking-widest cursor-pointer"
           >
             <ShieldCheck className="w-4 h-4 text-white" />
             Confirmar & Gravar Composição de Equipa
@@ -325,7 +325,7 @@ export default function Equipe() {
       <div className="bg-amber-50/10 dark:bg-amber-950/10 border border-amber-200/60 dark:border-amber-900/30 rounded-2xl p-4 flex gap-3 text-xs">
         <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-bold text-amber-850 dark:text-amber-300">Sincronização & Processo</p>
+          <p className="font-bold text-amber-800 dark:text-amber-300">Sincronização & Processo</p>
           <p className="text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
             Esta equipa configurada servirá de matriz para todas as fiscalizações do dia. No momento de registar cada visita, poderá validar de imediato e realizar qualquer retificação pontual necessária.
           </p>
@@ -336,7 +336,7 @@ export default function Equipe() {
       {showSavedToast && (
         <div className={cn(
           "fixed bottom-24 left-1/2 -translate-x-1/2 text-white px-4 py-2.5 rounded-full text-xs font-bold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-300 z-50",
-          toastError ? "bg-red-600" : "bg-slate-900 dark:bg-slate-800 border border-slate-850 dark:border-slate-700"
+          toastError ? "bg-red-600" : "bg-slate-900 dark:bg-slate-800 border border-slate-800 dark:border-slate-700"
         )}>
           <Check className={cn("w-4 h-4", toastError ? "text-red-200" : "text-emerald-400")} />
           <span>{toastMessage}</span>
@@ -347,7 +347,7 @@ export default function Equipe() {
       <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
         <button
           onClick={() => navigate('/visitas/nova')}
-          className="w-full flex items-center justify-between p-4 bg-slate-900 dark:bg-slate-850 text-white rounded-2xl hover:bg-slate-800 dark:hover:bg-slate-800/80 transition-all font-bold group shadow-xl shadow-slate-900/10 border border-slate-850 dark:border-slate-750/50 cursor-pointer"
+          className="w-full flex items-center justify-between p-4 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl hover:bg-slate-800 dark:hover:bg-slate-800/80 transition-all font-bold group shadow-xl shadow-slate-900/10 border border-slate-800 dark:border-slate-750/50 cursor-pointer"
         >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-800 dark:bg-slate-900 text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">

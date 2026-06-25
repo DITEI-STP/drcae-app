@@ -141,13 +141,13 @@ export default function VisitaDetail() {
             {(() => {
               if (visita.synced) {
                 return visita.confirmationStatus === 'pendente'
-                  ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 dark:bg-amber-955/20 text-amber-800 dark:text-amber-400">Pendente</span>
-                  : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-emerald-100 dark:bg-emerald-955/20 text-emerald-800 dark:text-emerald-450">Confirmada</span>;
+                  ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400">Pendente</span>
+                  : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400">Confirmada</span>;
               }
               const age = Date.now() - (visita.createdAt || 0);
               return age > 60 * 60 * 1000
-                ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 dark:bg-amber-955/20 text-amber-800 dark:text-amber-400">Pendente</span>
-                : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-blue-100 dark:bg-blue-955/20 text-blue-700 dark:text-blue-450">Sincronizando…</span>;
+                ? <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400">Pendente</span>
+                : <span className="text-[10px] uppercase font-bold px-2 py-1.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Sincronizando…</span>;
             })()}
             <span className={cn(
                "text-[10px] uppercase font-bold px-2 py-1.5 rounded-md",
@@ -211,7 +211,7 @@ export default function VisitaDetail() {
                </div>
             </div>
             
-            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-350">
+            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
                <div className="flex items-center gap-3">
                   <Calendar className="w-4 h-4 text-slate-400" />
                   <span className="font-medium text-slate-800 dark:text-slate-200">{visita.date} às {visita.time}</span>
@@ -219,7 +219,7 @@ export default function VisitaDetail() {
                
                {visita.atividadeEconomica && (
                   <div className="flex items-center gap-3">
-                     <span className="text-[10px] font-bold text-slate-400 dark:text-slate-550 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded leading-none shrink-0 border border-slate-200 dark:border-slate-700">Em Vistoria</span>
+                     <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded leading-none shrink-0 border border-slate-200 dark:border-slate-700">Em Vistoria</span>
                      <span className="font-medium text-blue-700 dark:text-blue-400 leading-snug">{visita.atividadeEconomica}</span>
                   </div>
                )}
@@ -244,7 +244,7 @@ export default function VisitaDetail() {
                   </div>
                </div>
                {visita.geolocation && (
-                  <div className="flex items-center gap-3 text-blue-600 dark:text-blue-450 bg-blue-50 dark:bg-blue-950/20 p-2 rounded-lg -mx-2">
+                  <div className="flex items-center gap-3 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg -mx-2">
                      <MapPin className="w-4 h-4 shrink-0" />
                      <span className="text-xs font-mono">{visita.geolocation.lat.toFixed(5)}, {visita.geolocation.lng.toFixed(5)}</span>
                   </div>
@@ -265,11 +265,11 @@ export default function VisitaDetail() {
               <div className="space-y-3">
                  {infracoes.map(inf => (
                     <div key={inf.id} className="flex justify-between items-start border-b border-red-100 dark:border-red-900/20 pb-2 last:border-0 last:pb-0">
-                       <span className="font-bold text-slate-800 dark:text-slate-205 flex-1 pr-2 leading-tight text-sm">{inf.type}</span>
+                       <span className="font-bold text-slate-800 dark:text-slate-200 flex-1 pr-2 leading-tight text-sm">{inf.type}</span>
                        <span className={cn(
                           "text-[10px] shrink-0 uppercase font-bold px-2 py-1 rounded leading-none",
-                          inf.severity === 'Baixa' ? "bg-amber-100 text-amber-800 dark:bg-amber-955/30 dark:text-amber-450" :
-                          inf.severity === 'Alta' ? "bg-orange-100 text-orange-800 dark:bg-orange-955/30 dark:text-orange-455" : "bg-red-600 text-white dark:bg-red-700"
+                          inf.severity === 'Baixa' ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" :
+                          inf.severity === 'Alta' ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" : "bg-red-600 text-white dark:bg-red-900/50 dark:text-red-300"
                        )}>
                           {inf.severity}
                        </span>
@@ -280,13 +280,13 @@ export default function VisitaDetail() {
          ) : (
             <div className="mt-6">
              <div className="flex items-center justify-between mb-3 px-1">
-                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-550 flex items-center gap-2">
+                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-2">
                    <AlertTriangle className="w-3.5 h-3.5 text-slate-400" />
                    Infrações Constatadas
                 </h3>
-                <span className="bg-slate-200 dark:bg-slate-850 text-slate-700 dark:text-slate-350 text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-full">0</span>
              </div>
-             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-450 text-center">
+             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 text-center">
                    Nenhuma infração registada.
              </div>
             </div>
