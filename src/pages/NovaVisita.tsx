@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useGeoLocation, isWebviewMode } from '../lib/geo';
 import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica } from '../db/db';
@@ -10,6 +10,11 @@ import { toast } from '../lib/notifications';
 import { generateOfflineCode } from '../lib/offlineCode';
 import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
 import CameraCapture from '../components/CameraCapture';
+
+type FirmaDistanceMeta = {
+  distanceKm: number | null;
+  hasCoordinates: boolean;
+};
 
 const getCachedRamos = (): string[] => {
   try {
@@ -36,6 +41,42 @@ const isMobileDevice = (): boolean => {
     (/Macintosh/i.test(userAgent) && isTouchDevice);
   return isMobileUA && isTouchDevice;
 };
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function calculateDistanceKm(
+  origin: { lat: number; lng: number },
+  target: { lat: number; lng: number },
+): number {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(target.lat - origin.lat);
+  const dLng = toRadians(target.lng - origin.lng);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(origin.lat)) *
+      Math.cos(toRadians(target.lat)) *
+      Math.sin(dLng / 2) ** 2;
+
+  return earthRadiusKm * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function getFirmaReferencePoint(firma: { geolocation?: { lat: number; lng: number } | null; atividades?: AtividadeEconomica[] }) {
+  if (firma.geolocation?.lat != null && firma.geolocation?.lng != null) {
+    return firma.geolocation;
+  }
+
+  return firma.atividades?.find((atividade) => atividade.geolocation?.lat != null && atividade.geolocation?.lng != null)?.geolocation || null;
+}
+
+function formatDistanceLabel(distanceKm: number | null): string | null {
+  if (distanceKm == null) return null;
+  if (distanceKm < 1) {
+    return `${Math.round(distanceKm * 1000)} m`;
+  }
+  return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km`;
+}
 
 export default function NovaVisita() {
   const navigate = useNavigate();
@@ -95,6 +136,37 @@ export default function NovaVisita() {
 
   const [search, setSearch] = useState('');
 
+  const filteredFirmas = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return (firmas || [])
+      .filter((firma) =>
+        !normalizedSearch ||
+        (firma.name || '').toLowerCase().includes(normalizedSearch) ||
+        (firma.nif || '').includes(normalizedSearch),
+      )
+      .map((firma) => {
+        const point = location ? getFirmaReferencePoint(firma) : null;
+        const distanceKm = point && location
+          ? calculateDistanceKm(location, point)
+          : null;
+
+        return {
+          firma,
+          distanceKm,
+          hasCoordinates: distanceKm != null,
+        };
+      })
+      .sort((left, right) => {
+        if (left.hasCoordinates && right.hasCoordinates) {
+          return (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY);
+        }
+        if (left.hasCoordinates) return -1;
+        if (right.hasCoordinates) return 1;
+        return (left.firma.name || '').localeCompare(right.firma.name || '', 'pt');
+      });
+  }, [firmas, location, search]);
+
   const handleSearchChange = (val: string) => {
     setSearch(val);
     setVisibleFirmsCount(15);
@@ -103,11 +175,7 @@ export default function NovaVisita() {
   const handleFirmsScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     if (target.scrollHeight - target.scrollTop <= target.clientHeight + 60) {
-      const filteredFirmsCount = (firmas || []).filter(f => 
-        (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
-        (f.nif || '').includes(search)
-      ).length;
-      if (visibleFirmsCount < filteredFirmsCount) {
+      if (visibleFirmsCount < filteredFirmas.length) {
         setVisibleFirmsCount(prev => prev + 15);
       }
     }
@@ -572,10 +640,7 @@ export default function NovaVisita() {
                      <div className="flex items-center justify-between mt-2">
                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                          {(() => {
-                           const count = (firmas || []).filter(f => 
-                             (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
-                             (f.nif || '').includes(search)
-                           ).length;
+                           const count = filteredFirmas.length;
                            return `${count} ${count === 1 ? 'operador' : 'operadores'}`;
                          })()}
                        </p>
@@ -596,12 +661,7 @@ export default function NovaVisita() {
                      className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar mt-2 border border-slate-100 dark:border-slate-800 rounded-xl p-2 bg-slate-50/50 dark:bg-slate-950/30"
                    >
                        {(() => {
-                         const filtered = (firmas || []).filter(f => 
-                           (f.name || '').toLowerCase().includes(search.toLowerCase()) || 
-                           (f.nif || '').includes(search)
-                         );
-                         
-                         if (filtered.length === 0) {
+                         if (filteredFirmas.length === 0) {
                            return (
                              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 font-medium space-y-2">
                                <p>Nenhum operador económico encontrado.</p>
@@ -623,7 +683,7 @@ export default function NovaVisita() {
 
                          return (
                            <>
-                             {filtered.slice(0, visibleFirmsCount).map(f => (
+                             {filteredFirmas.slice(0, visibleFirmsCount).map(({ firma: f, distanceKm, hasCoordinates }) => (
                                <div
                                  key={f.id}
                                  onClick={() => setFirmaId(f.id!)}
@@ -646,13 +706,23 @@ export default function NovaVisita() {
                                    <p className={cn("font-bold text-sm leading-tight truncate", firmaId === f.id ? "text-indigo-900 dark:text-indigo-300" : "text-slate-800 dark:text-slate-200")}>
                                      {f.name}
                                    </p>
-                                   <p className={cn("text-[10px] uppercase font-bold tracking-widest mt-1 font-mono", firmaId === f.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500")}>
-                                     NIF: {f.nif}
-                                   </p>
+                                   <div className="flex items-center justify-between gap-3 mt-1">
+                                     <p className={cn("text-[10px] uppercase font-bold tracking-widest font-mono", firmaId === f.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500")}>
+                                       NIF: {f.nif}
+                                     </p>
+                                     <span className={cn(
+                                       "text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap",
+                                       hasCoordinates
+                                         ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                                         : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+                                     )}>
+                                       {hasCoordinates ? `${formatDistanceLabel(distanceKm)} de si` : 'Sem GPS mapeado'}
+                                     </span>
+                                   </div>
                                  </div>
                                </div>
                              ))}
-                             {visibleFirmsCount < filtered.length && (
+                             {visibleFirmsCount < filteredFirmas.length && (
                                <div className="py-2 text-center text-[10px] text-slate-400 font-bold animate-pulse">
                                  A carregar mais operadores...
                                </div>
