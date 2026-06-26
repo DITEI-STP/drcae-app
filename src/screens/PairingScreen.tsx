@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
-import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw, Zap, ZoomIn, ZoomOut } from 'lucide-react';
+import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw, Zap, ZoomIn, ZoomOut, Download } from 'lucide-react';
 import * as api from '../lib/api';
 import {
   collectBrowserDeviceInfo,
   generateDeviceAlias,
   storePairingCredentials,
 } from '../lib/pairing';
+import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
 
 interface QRPayload {
   v: number;
@@ -470,6 +471,18 @@ export default function PairingScreen({ onRegistered }: Props) {
         <p className="text-slate-600 text-xs text-center mt-6">
           O código QR é gerado no painel admin em <strong className="text-slate-500">Sincronização Móvel</strong>
         </p>
+
+        {/* Botão de download do APK */}
+        <div className="mt-8 pt-6 border-t border-slate-800/60 flex flex-col items-center">
+          <a
+            href={WEBVIEW_APK_DOWNLOAD_URL}
+            download
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md transition-all shrink-0 cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-blue-200 shrink-0" />
+            <span>Descarregar versão APK</span>
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -1187,12 +1187,10 @@ export default function App() {
       const wvt = params.get('wvt');
       if (wvt) {
         try {
-          await fetch('/api/app/auth/webview-handshake', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ launch_token: wvt }),
-            credentials: 'include',
-          });
+          const handshake = await api.performHandshake(wvt);
+          if (handshake.device_id) {
+            api.setDeviceId(handshake.device_id);
+          }
           params.delete('wvt');
           const newSearch = params.toString();
           window.history.replaceState({}, '', window.location.pathname + (newSearch ? '?' + newSearch : ''));
@@ -1254,7 +1252,10 @@ export default function App() {
 
     (async () => {
       const { launch_token } = await api.requestLaunchToken(creds.webview_signature);
-      await api.performHandshake(launch_token);
+      const handshake = await api.performHandshake(launch_token);
+      if (handshake.device_id) {
+        api.setDeviceId(handshake.device_id);
+      }
       setSessionState('valid');
     })().catch(() => {
       clearPairingCredentials();

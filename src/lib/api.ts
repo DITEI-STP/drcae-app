@@ -32,6 +32,13 @@ export function getDeviceId(): string {
   return deviceId;
 }
 
+export function setDeviceId(deviceId: string): void {
+  const normalized = deviceId.trim();
+  if (normalized) {
+    localStorage.setItem('drcae_device_id', normalized);
+  }
+}
+
 // Wrapper fetch com injeção de JWT e tratamento automático de expiração (401).
 // silent=true: usado pelo sync background — se o refresh falhar, lança AuthSyncError
 // em vez de emitir auth-expired, para não fazer logout enquanto há dados locais por sincronizar.
@@ -282,7 +289,7 @@ export async function requestLaunchToken(
 }
 
 // Troca launch_token pelo cookie __wvs (Set-Cookie HttpOnly)
-export async function performHandshake(launchToken: string): Promise<void> {
+export async function performHandshake(launchToken: string): Promise<{ device_id?: string }> {
   const url = `${API_BASE}/auth/webview-handshake`;
   const res = await fetch(url, {
     method: 'POST',
@@ -294,4 +301,5 @@ export async function performHandshake(launchToken: string): Promise<void> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Erro ${res.status}`);
   }
+  return res.json();
 }
