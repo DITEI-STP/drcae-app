@@ -326,3 +326,56 @@ export async function updateDeviceTeam(team: string): Promise<any> {
   });
 }
 
+export async function getDeviceChatMessages(limit = 80): Promise<{ messages: any[] }> {
+  const params = new URLSearchParams({
+    device_id: getDeviceId(),
+    limit: String(limit),
+  });
+  return request(`device/chat/messages?${params.toString()}`);
+}
+
+export async function sendDeviceChatMessage(input: {
+  message_type?: 'text' | 'audio';
+  text_body?: string;
+  audio?: {
+    uid?: string | null;
+    url?: string | null;
+    mimetype?: string | null;
+    duration_seconds?: number | null;
+  };
+}) {
+  return request('device/chat/message', {
+    method: 'POST',
+    body: JSON.stringify({
+      device_id: getDeviceId(),
+      message_type: input.message_type || 'text',
+      text_body: input.text_body || null,
+      audio: input.audio || null,
+    }),
+  });
+}
+
+export async function uploadChatAudio(file: Blob, filename = 'chat-audio.webm') {
+  const token = getJwtToken();
+  const formData = new FormData();
+  formData.append('file', new File([file], filename, { type: file.type || 'audio/webm' }));
+  formData.append('folder', 'realtime-chat/device');
+  formData.append('visibility', 'public');
+
+  const headers = new Headers();
+  if (token) headers.set('Authorization', token);
+
+  const response = await fetch('/api/storage', {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+    headers,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || `Erro ${response.status}`);
+  }
+
+  return response.json();
+}

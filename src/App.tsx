@@ -14,6 +14,7 @@ import VisitasList from './pages/VisitasList';
 import NovaVisita from './pages/NovaVisita';
 import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
+import Central from './pages/Central';
 import Equipe from './pages/Equipe';
 import PendentesPage from './pages/PendentesPage';
 import SetupPage from './pages/SetupPage';
@@ -1432,6 +1433,8 @@ export default function App() {
           <Route path="equipe" element={<Equipe />} />
 
           <Route path="mapa" element={<Mapa />} />
+
+          <Route path="central" element={<Central />} />
 
           <Route path="pendentes" element={<PendentesPage />} />
 

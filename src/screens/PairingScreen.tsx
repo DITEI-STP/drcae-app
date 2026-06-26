@@ -4,7 +4,6 @@ import { Camera, Keyboard, AlertCircle, Loader2, QrCode, RefreshCw, Zap, ZoomIn,
 import * as api from '../lib/api';
 import {
   collectBrowserDeviceInfo,
-  generateDeviceAlias,
   storePairingCredentials,
 } from '../lib/pairing';
 import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
@@ -13,6 +12,7 @@ interface QRPayload {
   v: number;
   code: string;
   endpoint?: string;
+  alias?: string;
 }
 
 interface Props {
@@ -29,7 +29,7 @@ export default function PairingScreen({ onRegistered }: Props) {
 
   const [manualCode, setManualCode] = useState('');
   const [manualEndpoint, setManualEndpoint] = useState(window.location.origin);
-  const [alias, setAlias] = useState(() => generateDeviceAlias());
+  const [assignedAlias, setAssignedAlias] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -151,6 +151,7 @@ export default function PairingScreen({ onRegistered }: Props) {
           const payload: QRPayload = JSON.parse(result.data);
           if (payload.v === 2 && payload.code) {
             scannedRef.current = true;
+            setAssignedAlias(payload.alias || '');
             handleSubmit(payload.code, payload.endpoint || window.location.origin);
           }
         } catch {
@@ -187,14 +188,13 @@ export default function PairingScreen({ onRegistered }: Props) {
 
   async function handleSubmit(code: string, endpoint: string) {
     const deviceId = api.getDeviceId();
-    const deviceAlias = alias.trim() || generateDeviceAlias();
     const deviceInfo = collectBrowserDeviceInfo(deviceId);
 
     setLoading(true);
     setError('');
 
     try {
-      const result = await api.registerDeviceFull(code, deviceAlias, deviceInfo);
+      const result = await api.registerDeviceFull(code, assignedAlias, deviceInfo);
       storePairingCredentials({
         device_id: result.device_id || deviceId,
         webview_signature: result.webview_signature,
@@ -378,19 +378,11 @@ export default function PairingScreen({ onRegistered }: Props) {
               </>
             )}
 
-            {/* Campo alias (scan) */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
-                Nome do dispositivo
-              </label>
-              <input
-                type="text"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-                placeholder="Ex: Falcao Dourado"
-                value={alias}
-                onChange={e => setAlias(e.target.value)}
-                maxLength={60}
-              />
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Alias atribuido pela central</p>
+              <p className="mt-1 text-sm font-bold text-slate-200">
+                {assignedAlias || 'Sera assumido automaticamente ao concluir o emparelhamento'}
+              </p>
             </div>
           </div>
         ) : (
@@ -430,19 +422,11 @@ export default function PairingScreen({ onRegistered }: Props) {
               <p className="text-slate-600 text-xs mt-1">Visível no painel de administração ao gerar o QR</p>
             </div>
 
-            {/* Alias */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
-                Nome do dispositivo
-              </label>
-              <input
-                type="text"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-                placeholder="Ex: Falcao Dourado"
-                value={alias}
-                onChange={e => setAlias(e.target.value)}
-                maxLength={60}
-              />
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Alias do dispositivo</p>
+              <p className="mt-1 text-sm font-bold text-slate-200">
+                Definido automaticamente pela central administrativa quando o emparelhamento for aceite.
+              </p>
             </div>
 
             <button

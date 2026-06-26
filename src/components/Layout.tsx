@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -16,6 +16,7 @@ const navItems = [
   { to: '/visitas', icon: ClipboardList, label: 'Visitas' },
   { to: '/equipe', icon: Users, label: 'Equipe' },
   { to: '/mapa', icon: MapIcon, label: 'Mapa' },
+  { to: '/central', icon: RadioTower, label: 'Central' },
   { to: '/settings', icon: Settings, label: 'Sistema' },
 ];
 
