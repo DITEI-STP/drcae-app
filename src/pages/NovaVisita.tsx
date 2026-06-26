@@ -1,6 +1,18 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useGeoLocation, isWebviewMode } from '../lib/geo';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import { DistrictLayer } from '../components/map/DistrictLayer';
+import { MapLayerSwitcher, MAP_TILE_LAYERS, MAP_ATTRIBUTIONS, type MapProvider } from '../components/map/MapLayerSwitcher';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, MapPin, Camera, Image as ImageIcon, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
@@ -111,6 +123,7 @@ export default function NovaVisita() {
   });
   const [newTechName, setNewTechName] = useState('');
   const { location, refresh: refreshGeo } = useGeoLocation();
+  const [mapProvider, setMapProvider] = useState<MapProvider>('osm');
 
   const [infracoes, setInfracoes] = useState<{type: string, severity: string, minimum_penalty?: string, maximum_penalty?: string}[]>([]);
   const [selectedInfraction, setSelectedInfraction] = useState<{type: string, severity: string, legalInstrument?: string, details?: string} | null>(null);
@@ -1515,17 +1528,24 @@ export default function NovaVisita() {
                          <span>Lat: {location.lat.toFixed(6)}</span>
                          <span>Lng: {location.lng.toFixed(6)}</span>
                       </div>
-                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden h-[200px] w-full bg-slate-100 dark:bg-slate-800 relative">
-                         <iframe
-                            title="Mapa Coleta Ponto"
-                            width="100%"
-                            height="100%"
-                            className="border-0"
-                            src={`https://maps.google.com/maps?q=${location.lat},${location.lng}&t=&z=16&ie=UTF8&iwloc=&output=embed`}
-                            allowFullScreen
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                         ></iframe>
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden h-[200px] w-full relative">
+                         <MapContainer
+                            center={[location.lat, location.lng]}
+                            zoom={16}
+                            scrollWheelZoom={false}
+                            className="h-full w-full"
+                            zoomControl={false}
+                         >
+                            {mapProvider !== 'simple' && (
+                               <TileLayer
+                                  attribution={MAP_ATTRIBUTIONS[mapProvider]}
+                                  url={MAP_TILE_LAYERS[mapProvider as Exclude<MapProvider, 'simple'>]}
+                               />
+                            )}
+                            <DistrictLayer fillOpacity={mapProvider === 'simple' ? 0.5 : 0.07} />
+                            <Marker position={[location.lat, location.lng]} />
+                         </MapContainer>
+                         <MapLayerSwitcher value={mapProvider} onChange={setMapProvider} />
                       </div>
                       {(() => {
                          const selectedFirma = firmas?.find(f => f.id === firmaId);

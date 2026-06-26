@@ -30,6 +30,25 @@ registerRoute(
   }),
 );
 
+registerRoute(
+  ({ url }) => (
+    url.hostname.endsWith('tile.openstreetmap.org') ||
+    url.hostname.endsWith('basemaps.cartocdn.com') ||
+    url.hostname === 'server.arcgisonline.com' ||
+    url.pathname.includes('/MapServer/tile/')
+  ),
+  new CacheFirst({
+    cacheName: 'drcae-map-tiles-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 2500,
+        maxAgeSeconds: 90 * 24 * 60 * 60,
+      }),
+    ],
+  }),
+);
+
 registerRoute(new NavigationRoute(
   createHandlerBoundToURL('/app/index.html'),
   { denylist: [/^\/api\//] },

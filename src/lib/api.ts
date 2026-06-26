@@ -1,3 +1,5 @@
+import { getDrcaeAppVersion } from './version';
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
 
 // Erro específico para falhas de autenticação durante sync background.
@@ -305,7 +307,10 @@ export async function performHandshake(launchToken: string): Promise<{ device_id
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ launch_token: launchToken }),
+    body: JSON.stringify({
+      launch_token: launchToken,
+      app_version: getDrcaeAppVersion(),
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
