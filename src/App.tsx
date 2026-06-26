@@ -39,7 +39,7 @@ import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const { theme, setTheme } = useTheme();
-  const [selectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
+  const [selectedProfile, setSelectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
     return (localStorage.getItem('drcae_server_sync_profile') as 'economy' | 'standard' | 'maximum') || 'standard';
   });
   const [showPinModal, setShowPinModal] = useState(false);
@@ -84,6 +84,32 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     bytes: 0, unsyncedBytes: 0,
   });
   const bytesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const updateProfile = (profile?: string | null) => {
+      if (profile === 'economy' || profile === 'standard' || profile === 'maximum') {
+        setSelectedProfile(profile);
+      }
+    };
+
+    const handleProfileUpdate = (event: Event) => {
+      updateProfile((event as CustomEvent<{ profile?: string }>).detail?.profile);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'drcae_server_sync_profile') {
+        updateProfile(event.newValue);
+      }
+    };
+
+    window.addEventListener('drcae:sync-profile-updated', handleProfileUpdate);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('drcae:sync-profile-updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (bytesDebounceRef.current) clearTimeout(bytesDebounceRef.current);
@@ -1279,6 +1305,20 @@ export default function App() {
     const handler = () => setDevicePending(true);
     window.addEventListener('device-pending-approval', handler);
     return () => window.removeEventListener('device-pending-approval', handler);
+  }, []);
+
+  useEffect(() => {
+    const handleDeviceBlocked = () => {
+      api.setJwtToken(null);
+      crypto.setActiveKey(null);
+      setDevicePending(false);
+      setIsAuthenticated(false);
+      setSessionState('waiting_approval');
+      customAlert.warning('Dispositivo bloqueado', 'Este dispositivo foi bloqueado pelo administrador e não pode continuar a operar.');
+    };
+
+    window.addEventListener('device-blocked', handleDeviceBlocked);
+    return () => window.removeEventListener('device-blocked', handleDeviceBlocked);
   }, []);
 
   const handleLogin = async () => {

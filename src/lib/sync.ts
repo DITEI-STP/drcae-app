@@ -36,6 +36,9 @@ export async function syncPull(profile?: string): Promise<number> {
   // Persistir perfil atribuído pelo servidor
   if (response.sync_profile) {
     localStorage.setItem('drcae_server_sync_profile', response.sync_profile);
+    window.dispatchEvent(new CustomEvent('drcae:sync-profile-updated', {
+      detail: { profile: response.sync_profile },
+    }));
   }
 
   // Actualizar Firmas

@@ -10,6 +10,9 @@ type RealtimeEvent = {
   source: 'admin' | 'app' | 'system';
   deviceId?: string | null;
   needsSync?: string[];
+  data?: {
+    sync_profile?: string;
+  };
 };
 
 type UseAppRealtimeOptions = {
@@ -79,6 +82,20 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
 
     const scheduleSync = (event?: RealtimeEvent) => {
       if (event?.source === 'app' && event.deviceId === api.getDeviceId()) return;
+      if (event?.type === 'device.invalidated') {
+        window.dispatchEvent(new Event('auth-expired'));
+        return;
+      }
+      if (event?.type === 'device.rejected') {
+        window.dispatchEvent(new Event('device-blocked'));
+        return;
+      }
+      if (event?.type === 'device.sync-profile.updated' && event.data?.sync_profile) {
+        localStorage.setItem('drcae_server_sync_profile', event.data.sync_profile);
+        window.dispatchEvent(new CustomEvent('drcae:sync-profile-updated', {
+          detail: { profile: event.data.sync_profile },
+        }));
+      }
       localStorage.setItem(PENDING_SYNC_KEY, '1');
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       debounceRef.current = window.setTimeout(() => {
