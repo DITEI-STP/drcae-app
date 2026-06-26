@@ -11,6 +11,8 @@ import { MapContainer, TileLayer, Popup, CircleMarker, Polyline, useMap } from '
 import 'leaflet/dist/leaflet.css';
 import { DistrictLayer } from '../components/map/DistrictLayer';
 import { MapLayerSwitcher, MAP_TILE_LAYERS, MAP_ATTRIBUTIONS, type MapProvider } from '../components/map/MapLayerSwitcher';
+import { MapExpandButton } from '../components/map/MapExpandButton';
+import { MapExpandOverlay, type ExpandMode } from '../components/map/MapExpandOverlay';
 
 const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
   'Água Grande': { lat: 0.336, lng: 6.730 },
@@ -74,6 +76,7 @@ export default function Mapa() {
   const [gpsFilter, setGpsFilter] = useState<'all' | 'mapped' | 'unmapped'>('all');
   const [visibleCount, setVisibleCount] = useState(15);
   const [mapProvider, setMapProvider] = useState<MapProvider>('osm');
+  const [mapExpandMode, setMapExpandMode] = useState<ExpandMode | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() =>
     (localStorage.getItem('drcae_view_mapa') as 'list' | 'grid') || 'list'
   );
@@ -550,63 +553,27 @@ export default function Mapa() {
                      <MapContainer
                         center={locInfo.lat !== 0 ? [locInfo.lat, locInfo.lng] : [0.336, 6.730]}
                         zoom={locInfo.lat !== 0 ? 16 : 10}
-                        scrollWheelZoom={true}
+                        scrollWheelZoom
                         className="h-full w-full"
                      >
                         {mapProvider !== 'simple' && (
-                           <TileLayer
-                              attribution={MAP_ATTRIBUTIONS[mapProvider]}
-                              url={MAP_TILE_LAYERS[mapProvider as Exclude<MapProvider, 'simple'>]}
-                           />
+                           <TileLayer attribution={MAP_ATTRIBUTIONS[mapProvider]} url={MAP_TILE_LAYERS[mapProvider as Exclude<MapProvider, 'simple'>]} />
                         )}
                         <DistrictLayer fillOpacity={mapProvider === 'simple' ? 0.5 : 0.07} />
                         <RouteViewport points={routePoints} />
                         {routePlan?.coordinates?.length ? (
-                           <Polyline
-                              positions={routePlan.coordinates.map((point) => [point.lat, point.lng])}
-                              pathOptions={{
-                                 color: routePlan.source === 'direct' ? '#0f766e' : '#2563eb',
-                                 weight: 5,
-                                 opacity: 0.86,
-                                 dashArray: routePlan.source === 'direct' ? '8 8' : undefined,
-                              }}
-                           />
+                           <Polyline positions={routePlan.coordinates.map((p) => [p.lat, p.lng])} pathOptions={{ color: routePlan.source === 'direct' ? '#0f766e' : '#2563eb', weight: 5, opacity: 0.86, dashArray: routePlan.source === 'direct' ? '8 8' : undefined }} />
                         ) : currentLoc && targetCoords ? (
-                           <Polyline
-                              positions={[[currentLoc.lat, currentLoc.lng], [targetCoords.lat, targetCoords.lng]]}
-                              pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.72, dashArray: '8 8' }}
-                           />
+                           <Polyline positions={[[currentLoc.lat, currentLoc.lng], [targetCoords.lat, targetCoords.lng]]} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.72, dashArray: '8 8' }} />
                         ) : null}
                         {currentLoc && (
-                           <CircleMarker
-                              center={[currentLoc.lat, currentLoc.lng]}
-                              radius={9}
-                              pathOptions={{ color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.85, weight: 3 }}
-                           >
-                              <Popup>
-                                 <div className="text-xs font-sans">
-                                    <p className="font-bold">Localização atual</p>
-                                    <p className="text-slate-500">
-                                       {currentLoc.accuracy ? `Precisão ${Math.round(currentLoc.accuracy)} m` : 'GPS ativo'}
-                                    </p>
-                                 </div>
-                              </Popup>
+                           <CircleMarker center={[currentLoc.lat, currentLoc.lng]} radius={9} pathOptions={{ color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.85, weight: 3 }}>
+                              <Popup><div className="text-xs font-sans"><p className="font-bold">Localização atual</p><p className="text-slate-500">{currentLoc.accuracy ? `Precisão ${Math.round(currentLoc.accuracy)} m` : 'GPS ativo'}</p></div></Popup>
                            </CircleMarker>
                         )}
                         {targetCoords && (
-                           <CircleMarker
-                              center={[targetCoords.lat, targetCoords.lng]}
-                              radius={10}
-                              pathOptions={{ color: '#064e3b', fillColor: locInfo.hasExactPoint ? '#10b981' : '#f59e0b', fillOpacity: 0.9, weight: 3 }}
-                           >
-                              <Popup>
-                                 <div className="text-xs font-sans">
-                                    <p className="font-bold">{selectedFirma.name}</p>
-                                    <p className="text-slate-500">
-                                       {locInfo.hasExactPoint ? selectedFirma.district : 'Referência por distrito'}
-                                    </p>
-                                 </div>
-                              </Popup>
+                           <CircleMarker center={[targetCoords.lat, targetCoords.lng]} radius={10} pathOptions={{ color: '#064e3b', fillColor: locInfo.hasExactPoint ? '#10b981' : '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
+                              <Popup><div className="text-xs font-sans"><p className="font-bold">{selectedFirma.name}</p><p className="text-slate-500">{locInfo.hasExactPoint ? selectedFirma.district : 'Referência por distrito'}</p></div></Popup>
                            </CircleMarker>
                         )}
                      </MapContainer>
@@ -614,7 +581,37 @@ export default function Mapa() {
                      <div className="absolute left-2 bottom-2 z-[999] rounded-lg bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 shadow-sm">
                         {routeStatus}
                      </div>
+                     <MapExpandButton onExpand={() => setMapExpandMode('normal')} />
                   </div>
+                  {mapExpandMode && (
+                     <MapExpandOverlay mode={mapExpandMode} onClose={() => setMapExpandMode(null)} onModeChange={setMapExpandMode} title="Mapa de Operadores">
+                        <div className="h-full w-full relative">
+                           <MapContainer center={locInfo.lat !== 0 ? [locInfo.lat, locInfo.lng] : [0.336, 6.730]} zoom={locInfo.lat !== 0 ? 16 : 10} scrollWheelZoom className="h-full w-full absolute inset-0">
+                              {mapProvider !== 'simple' && (
+                                 <TileLayer attribution={MAP_ATTRIBUTIONS[mapProvider]} url={MAP_TILE_LAYERS[mapProvider as Exclude<MapProvider, 'simple'>]} />
+                              )}
+                              <DistrictLayer fillOpacity={mapProvider === 'simple' ? 0.5 : 0.07} />
+                              <RouteViewport points={routePoints} />
+                              {routePlan?.coordinates?.length ? (
+                                 <Polyline positions={routePlan.coordinates.map((p) => [p.lat, p.lng])} pathOptions={{ color: routePlan.source === 'direct' ? '#0f766e' : '#2563eb', weight: 5, opacity: 0.86, dashArray: routePlan.source === 'direct' ? '8 8' : undefined }} />
+                              ) : currentLoc && targetCoords ? (
+                                 <Polyline positions={[[currentLoc.lat, currentLoc.lng], [targetCoords.lat, targetCoords.lng]]} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.72, dashArray: '8 8' }} />
+                              ) : null}
+                              {currentLoc && (
+                                 <CircleMarker center={[currentLoc.lat, currentLoc.lng]} radius={9} pathOptions={{ color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.85, weight: 3 }}>
+                                    <Popup><div className="text-xs font-sans"><p className="font-bold">Localização atual</p><p className="text-slate-500">{currentLoc.accuracy ? `Precisão ${Math.round(currentLoc.accuracy)} m` : 'GPS ativo'}</p></div></Popup>
+                                 </CircleMarker>
+                              )}
+                              {targetCoords && (
+                                 <CircleMarker center={[targetCoords.lat, targetCoords.lng]} radius={10} pathOptions={{ color: '#064e3b', fillColor: locInfo.hasExactPoint ? '#10b981' : '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
+                                    <Popup><div className="text-xs font-sans"><p className="font-bold">{selectedFirma.name}</p><p className="text-slate-500">{locInfo.hasExactPoint ? selectedFirma.district : 'Referência por distrito'}</p></div></Popup>
+                                 </CircleMarker>
+                              )}
+                           </MapContainer>
+                           <MapLayerSwitcher value={mapProvider} onChange={setMapProvider} />
+                        </div>
+                     </MapExpandOverlay>
+                  )}
                </div>
 
                {/* Route Detail Panels */}

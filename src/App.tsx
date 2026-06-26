@@ -1053,9 +1053,12 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">NIF do Agente</label>
             <input 
               type="text" 
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="username"
               required
               value={nif}
-              onChange={(e) => setNif(e.target.value)}
+              onChange={(e) => setNif(e.target.value.replace(/\D/g, ''))}
               className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium transition-all"
               placeholder="Ex: 123456789"
               disabled={loading}
