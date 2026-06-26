@@ -36,6 +36,12 @@ export function setDeviceId(deviceId: string): void {
   const normalized = deviceId.trim();
   if (normalized) {
     localStorage.setItem('drcae_device_id', normalized);
+    if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
+      (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'DEVICE_ID_UPDATED',
+        device_id: normalized,
+      }));
+    }
   }
 }
 
@@ -248,7 +254,7 @@ export async function registerDeviceFull(
   code: string,
   alias: string,
   deviceInfo: object,
-): Promise<{ device_code: string; webview_signature: string; session_id: string }> {
+): Promise<{ device_id?: string; device_code: string; webview_signature: string; session_id: string }> {
   const url = `${API_BASE}/auth/device-register`;
   const res = await fetch(url, {
     method: 'POST',
@@ -265,7 +271,11 @@ export async function registerDeviceFull(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Erro ${res.status}`);
   }
-  return res.json();
+  const result = await res.json();
+  if (result.device_id) {
+    setDeviceId(result.device_id);
+  }
+  return result;
 }
 
 // Troca webview_signature por launch_token (curta duração)
@@ -301,5 +311,9 @@ export async function performHandshake(launchToken: string): Promise<{ device_id
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Erro ${res.status}`);
   }
-  return res.json();
+  const result = await res.json();
+  if (result.device_id) {
+    setDeviceId(result.device_id);
+  }
+  return result;
 }

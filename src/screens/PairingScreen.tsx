@@ -196,7 +196,7 @@ export default function PairingScreen({ onRegistered }: Props) {
     try {
       const result = await api.registerDeviceFull(code, deviceAlias, deviceInfo);
       storePairingCredentials({
-        device_id: deviceId,
+        device_id: result.device_id || deviceId,
         webview_signature: result.webview_signature,
         session_id: result.session_id,
         device_code: result.device_code,
