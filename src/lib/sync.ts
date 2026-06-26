@@ -150,6 +150,9 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
 
   patchSyncState({ phase: 'pushing', pushTotal, pushDone: 0, pushErrors: 0 });
 
+  const savedTeam = localStorage.getItem('drcae_equipe');
+  const parsedTeam = savedTeam ? JSON.parse(savedTeam).join(', ') : null;
+
   const payload = {
     firmas: unsyncedFirmas,
     visitas: unsyncedVisitas,
@@ -159,6 +162,7 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
       data: a.data instanceof ArrayBuffer ? arrayBufferToBase64(a.data) : a.data,
     })),
     prices,
+    team: parsedTeam,
   };
 
   let response: any;

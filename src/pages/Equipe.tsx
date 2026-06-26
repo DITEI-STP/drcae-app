@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import * as api from '../lib/api';
 
 interface OfficerOption {
   id: string;
@@ -81,6 +82,13 @@ export default function Equipe() {
     localStorage.setItem('drcae_equipe_definida', 'true');
     setEquipeDefinida(true);
     showToast('Equipa atualizada com sucesso!');
+
+    if (navigator.onLine && api.getJwtToken()) {
+      const teamStr = updatedMembers.join(', ');
+      api.updateDeviceTeam(teamStr).catch((err) => {
+        console.error('Erro ao atualizar equipa no servidor:', err);
+      });
+    }
   };
 
   const handleConfirmarEquipeDirecto = () => {

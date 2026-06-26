@@ -1301,6 +1301,19 @@ export default function App() {
     }
   };
 
+  // Sincronizar equipa no arranque se online e autenticado
+  useEffect(() => {
+    if (isAuthenticated && navigator.onLine && api.getJwtToken()) {
+      const savedTeam = localStorage.getItem('drcae_equipe');
+      if (savedTeam) {
+        try {
+          const parsedTeam = JSON.parse(savedTeam).join(', ');
+          api.updateDeviceTeam(parsedTeam).catch(() => {});
+        } catch {}
+      }
+    }
+  }, [isAuthenticated]);
+
   const handleLogout = () => {
     api.logout().catch(() => {});
     crypto.setActiveKey(null);

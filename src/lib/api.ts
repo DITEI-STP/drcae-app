@@ -317,3 +317,12 @@ export async function performHandshake(launchToken: string): Promise<{ device_id
   }
   return result;
 }
+
+export async function updateDeviceTeam(team: string): Promise<any> {
+  const deviceId = getDeviceId();
+  return request('device/team', {
+    method: 'POST',
+    body: JSON.stringify({ device_id: deviceId, team }),
+  });
+}
+
