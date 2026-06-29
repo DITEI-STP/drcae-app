@@ -1184,7 +1184,11 @@ function WaitingApprovalScreen({
   );
 }
 
-type SessionState = 'checking' | 'valid' | 'needs_pairing' | 'waiting_approval' | 'launching';
+type SessionState = 'checking' | 'valid' | 'needs_pairing' | 'waiting_approval' | 'launching' | 'offline_login';
+
+function isNativeWebview() {
+  return /DrcaeWebview\//i.test(navigator.userAgent);
+}
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -1194,6 +1198,8 @@ export default function App() {
   // Inicialização de sessão
   useEffect(() => {
     async function initSession() {
+      let restoredSessionKey = false;
+
       // 1. Restaurar chave criptográfica se houver no sessionStorage
       const savedKeyHex = sessionStorage.getItem('drcae_session_key');
       if (savedKeyHex) {
@@ -1201,11 +1207,12 @@ export default function App() {
           await crypto.restoreSessionKey(savedKeyHex);
           if (!api.getJwtToken()) {
             const refreshed = await api.refreshSilent();
-            if (!refreshed) {
+            if (!refreshed && !isNativeWebview()) {
               sessionStorage.removeItem('drcae_session_key');
             }
           }
           setIsAuthenticated(true);
+          restoredSessionKey = true;
         } catch (err) {
           console.error('[drcae] Falha ao restaurar chave criptográfica:', err);
           sessionStorage.removeItem('drcae_session_key');
@@ -1239,12 +1246,10 @@ export default function App() {
         return;
       }
 
-      // 4. Se a app está a correr dentro do webview nativo (DrcaeWebview), não mostrar pairing screen.
-      //    O webview nativo gere o emparelhamento; se não há sessão, a app nativa irá reiniciar o fluxo.
-      const isNativeWebview = /DrcaeWebview\//i.test(navigator.userAgent);
-      if (isNativeWebview) {
-        // Mostrar spinner; o webview nativo vai recarregar com ?wvt= quando pronto
-        setSessionState('checking');
+      // 4. No shell nativo offline não haverá ?wvt= nem cookie __wvs novo.
+      //    Se a chave local ainda existe, abrir a app; caso contrário pedir login offline.
+      if (isNativeWebview()) {
+        setSessionState(restoredSessionKey ? 'valid' : 'offline_login');
         return;
       }
 
@@ -1298,6 +1303,10 @@ export default function App() {
     const handleAuthExpired = () => {
       setIsAuthenticated(false);
       crypto.setActiveKey(null);
+      if (isNativeWebview() && !navigator.onLine) {
+        setSessionState('offline_login');
+        return;
+      }
       customAlert.warning('Sessão Expirada', 'A sua sessão expirou. Por favor, inicie sessão novamente.');
     };
     window.addEventListener('auth-expired', handleAuthExpired);
@@ -1327,6 +1336,7 @@ export default function App() {
 
   const handleLogin = async () => {
     setIsAuthenticated(true);
+    setSessionState('valid');
     if (navigator.onLine && api.getJwtToken()) {
       try {
         const assetsData = await api.getAssets();
@@ -1398,6 +1408,10 @@ export default function App() {
         }
       />
     );
+  }
+
+  if (sessionState === 'offline_login') {
+    return <LoginPage onLogin={handleLogin} />;
   }
 
   if (sessionState === 'waiting_approval') {
