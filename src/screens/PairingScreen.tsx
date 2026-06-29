@@ -22,6 +22,7 @@ interface Props {
 type Mode = 'scan' | 'manual';
 
 const setupHref = `${import.meta.env.BASE_URL || '/app/'}setup`;
+const APP_LOGO_SRC = '/app/img/logo.png';
 
 export default function PairingScreen({ onRegistered }: Props) {
   const [mode, setMode] = useState<Mode>('scan');
@@ -231,10 +232,9 @@ export default function PairingScreen({ onRegistered }: Props) {
       <div className="w-full max-w-sm">
         {/* Cabeçalho */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-blue-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <QrCode className="w-7 h-7 text-blue-400" />
+          <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-lg shadow-slate-950/20">
+            <img src={APP_LOGO_SRC} alt="DRCAE" className="w-16 h-16 object-contain" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-widest">DRCAE</h1>
           <p className="text-slate-400 text-sm mt-2">Emparelhar Dispositivo</p>
         </div>
 

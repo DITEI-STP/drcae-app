@@ -10,6 +10,8 @@ import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
 import { toast } from '../lib/notifications';
 
+const APP_LOGO_SRC = '/app/img/logo.png';
+
 const navItems = [
   { to: '/', icon: Home, label: 'Início' },
   { to: '/firmas', icon: Briefcase, label: 'Firmas' },
@@ -253,8 +255,8 @@ export default function Layout({ onLogout }: LayoutProps) {
       {/* Header */}
       <header className="h-16 bg-[#1A1C1E] text-white px-4 md:px-6 py-3 flex items-center justify-between shadow-md z-10 shrink-0 safe-top">
         <div className="flex items-center gap-3 md:gap-4">
-          <div className="w-8 h-8 bg-emerald-500 rounded flex items-center justify-center font-bold text-white uppercase">
-            F
+          <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center border border-white/20 overflow-hidden">
+            <img src={APP_LOGO_SRC} alt="DRCAE" className="w-8 h-8 object-contain" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight uppercase truncate max-w-[150px] md:max-w-none">
             Fiscalis <span className="text-slate-400 font-normal block md:inline text-xs md:text-lg leading-none mt-0.5 md:mt-0">Field</span>

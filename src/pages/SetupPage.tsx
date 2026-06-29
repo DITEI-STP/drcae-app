@@ -1,7 +1,8 @@
-import { ArrowLeft, BadgeCheck, Download, ExternalLink, ShieldCheck, Smartphone } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Download, ExternalLink, Smartphone } from 'lucide-react';
 
 const setupUrl = `${window.location.origin}/app/setup`;
 const appUrl = `${window.location.origin}/app/`;
+const APP_LOGO_SRC = '/app/img/logo.png';
 
 export default function SetupPage() {
   return (
@@ -17,8 +18,8 @@ export default function SetupPage() {
         </button>
 
         <header className="space-y-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/20">
-            <ShieldCheck className="h-6 w-6 text-blue-300" />
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-100 bg-white">
+            <img src={APP_LOGO_SRC} alt="DRCAE" className="h-12 w-12 object-contain" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">
             Configurar certificado local

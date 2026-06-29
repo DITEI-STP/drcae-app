@@ -38,6 +38,9 @@ import {
 } from './lib/pairing';
 import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 
+const APP_LOGO_SRC = '/app/img/logo.png';
+const APP_LOGO_LOGIN_SRC = '/app/img/logo_login.png';
+
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const { theme, setTheme } = useTheme();
   const [selectedProfile, setSelectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
@@ -1033,9 +1036,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       )}
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex justify-center mb-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
-            <ShieldCheck className="w-8 h-8 text-white" />
-          </div>
+          <img src={APP_LOGO_LOGIN_SRC} alt="DRCAE" className="h-20 w-auto max-w-[220px] object-contain" />
         </div>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">
@@ -1094,8 +1095,8 @@ function AwaitingApprovalScreen({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 text-center space-y-6">
-        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto">
-          <ShieldCheck className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+        <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto border border-slate-200 shadow-sm">
+          <img src={APP_LOGO_SRC} alt="DRCAE" className="w-16 h-16 object-contain" />
         </div>
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">Dispositivo Pendente</h2>
@@ -1151,8 +1152,8 @@ function WaitingApprovalScreen({
   return (
     <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center space-y-6">
-        <div className="w-16 h-16 bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto">
-          <ShieldCheck className="w-8 h-8 text-amber-400" />
+        <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
+          <img src={APP_LOGO_SRC} alt="DRCAE" className="w-16 h-16 object-contain" />
         </div>
 
         <div>
