@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { DRCAE_APP_VERSION } from '../lib/version';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -261,7 +262,7 @@ export default function Layout({ onLogout }: LayoutProps) {
             <img src={APP_LOGO_SRC} alt="DRCAE" className="w-8 h-8 object-contain" />
           </div>
           <h1 className="text-lg font-semibold tracking-tight uppercase truncate max-w-[150px] md:max-w-none">
-            Fiscalis <span className="text-slate-400 font-normal block md:inline text-xs md:text-lg leading-none mt-0.5 md:mt-0">Field</span>
+            Fiscalis <span className="text-slate-400 font-normal text-[10px] leading-none ml-1 tracking-widest font-mono">{DRCAE_APP_VERSION}</span>
           </h1>
         </div>
 
