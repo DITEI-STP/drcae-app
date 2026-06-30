@@ -1,6 +1,7 @@
 import { db } from '../db/db';
 import * as api from './api';
 import { AuthSyncError } from './api';
+import { probeServerReachability } from './serverReachability';
 import { patchSyncState } from './syncState';
 
 // String.fromCharCode(...array) falha com arrays > ~65k elementos.
@@ -13,6 +14,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
   }
   return btoa(binary);
+}
+
+async function anexoDataToBase64(data: unknown): Promise<string> {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer) return arrayBufferToBase64(data);
+  if (data instanceof Blob) return arrayBufferToBase64(await data.arrayBuffer());
+  throw new Error('Anexo sem dados locais válidos.');
 }
 
 // Perfil de sincronização atribuído pelo servidor (lido do localStorage)
@@ -69,7 +77,7 @@ export async function syncPull(profile?: string): Promise<number> {
           produtos: (v.produtos && v.produtos.length > 0)
             ? v.produtos
             : (existing?.produtos ?? []),
-          notes: v.notes ?? existing?.notes,
+          notes: v.notes || existing?.notes,
           atividadeEconomica: v.atividadeEconomica ?? existing?.atividadeEconomica,
           offlineCode: v.offlineCode ?? existing?.offlineCode,
           locationAutoCaptured: v.locationAutoCaptured ?? existing?.locationAutoCaptured,
@@ -171,15 +179,24 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
 
   const savedTeam = localStorage.getItem('drcae_equipe');
   const parsedTeam = savedTeam ? JSON.parse(savedTeam).join(', ') : null;
+  const anexoPayload: any[] = [];
+  const localErrors: string[] = [];
+  for (const a of unsyncedAnexos) {
+    try {
+      anexoPayload.push({
+        ...a,
+        data: await anexoDataToBase64(a.data),
+      });
+    } catch (err) {
+      localErrors.push(`Anexo ${a.id}: ${(err as Error).message}`);
+    }
+  }
 
   const payload = {
     firmas: unsyncedFirmas,
     visitas: unsyncedVisitas,
     infracoes: unsyncedInfracoes,
-    anexos: unsyncedAnexos.map(a => ({
-      ...a,
-      data: a.data instanceof ArrayBuffer ? arrayBufferToBase64(a.data) : a.data,
-    })),
+    anexos: anexoPayload,
     prices,
     team: parsedTeam,
   };
@@ -215,66 +232,89 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   }
 
   const accepted = response.accepted?.length || 0;
-  const rejected = (response.errors || []).length;
+  const allErrors = [...localErrors, ...(response.errors || [])];
+  const rejected = allErrors.length;
   patchSyncState({ pushDone: accepted, pushErrors: rejected });
 
   return {
     pushed: accepted,
-    errors: response.errors || [],
+    errors: allErrors,
   };
 }
 
 let isSyncInProgress = false;
+let syncRerunRequested = false;
 
 // Sincronização Geral (Push -> Pull)
 export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
   if (isSyncInProgress) {
+    syncRerunRequested = true;
     return { pulled: 0, pushed: 0, errors: [] };
   }
   isSyncInProgress = true;
-  const startedAt = Date.now();
-  patchSyncState({ phase: 'pushing', startedAt, endedAt: undefined, errors: [], needsAuth: false });
+  let totalPulled = 0;
+  let totalPushed = 0;
+  const allErrors: string[] = [];
 
   try {
-    // 1. Push
-    const pushRes = await syncPush();
+    do {
+      syncRerunRequested = false;
+      const startedAt = Date.now();
+      patchSyncState({ phase: 'pushing', startedAt, endedAt: undefined, errors: [], needsAuth: false });
 
-    // Se push falhou por auth, não tentar pull (mesmo motivo de falha)
-    if (pushRes.needsAuth) {
-      patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
-      return { pulled: 0, pushed: 0, errors: [], needsAuth: true };
-    }
+      // 1. Push
+      const pushRes = await syncPush();
+      totalPushed += pushRes.pushed;
+      allErrors.push(...pushRes.errors);
 
-    // 2. Pull
-    let pulled = 0;
-    try {
-      pulled = await syncPull(profile);
-    } catch (err) {
-      if (err instanceof AuthSyncError) {
+      // Se push falhou por auth, não tentar pull (mesmo motivo de falha)
+      if (pushRes.needsAuth) {
         patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
-        return { pulled: 0, pushed: pushRes.pushed, errors: pushRes.errors, needsAuth: true };
+        return { pulled: totalPulled, pushed: totalPushed, errors: allErrors, needsAuth: true };
       }
-      patchSyncState({ phase: 'error', errors: [(err as Error).message], endedAt: Date.now() });
-      throw err;
-    }
 
-    const endedAt = Date.now();
-    patchSyncState({
-      phase: 'done',
-      endedAt,
-      lastPushDone: pushRes.pushed,
-      lastPushErrors: pushRes.errors.length,
-      lastPullCount: pulled,
-      lastDurationMs: endedAt - startedAt,
-      errors: pushRes.errors,
-    });
+      // 2. Pull
+      let pulled = 0;
+      try {
+        pulled = await syncPull(profile);
+      } catch (err) {
+        if (err instanceof AuthSyncError) {
+          patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
+          return { pulled: totalPulled, pushed: totalPushed, errors: allErrors, needsAuth: true };
+        }
+        patchSyncState({ phase: 'error', errors: [(err as Error).message], endedAt: Date.now() });
+        throw err;
+      }
+      totalPulled += pulled;
+
+      const endedAt = Date.now();
+      patchSyncState({
+        phase: 'done',
+        endedAt,
+        lastPushDone: pushRes.pushed,
+        lastPushErrors: pushRes.errors.length,
+        lastPullCount: pulled,
+        lastDurationMs: endedAt - startedAt,
+        errors: pushRes.errors,
+      });
+    } while (syncRerunRequested);
 
     return {
-      pulled,
-      pushed: pushRes.pushed,
-      errors: pushRes.errors,
+      pulled: totalPulled,
+      pushed: totalPushed,
+      errors: allErrors,
     };
   } finally {
     isSyncInProgress = false;
   }
+}
+
+export async function triggerFullSyncIfReachable(profile = 'standard'): Promise<{ reachable: boolean; pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
+  const reachable = await probeServerReachability();
+  if (!reachable) {
+    return { reachable: false, pulled: 0, pushed: 0, errors: [] };
+  }
+
+  const result = await triggerFullSync(profile);
+  return { reachable: true, ...result };
 }

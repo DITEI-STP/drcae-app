@@ -5,6 +5,7 @@ import { db } from '../db/db';
 import { ArrowLeft, MapPin, Phone, Mail, User, ShieldAlert, Compass, Check, Crosshair, AlertTriangle, Map as MapIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast, customAlert } from '../lib/notifications';
+import { triggerFullSyncIfReachable } from '../lib/sync';
 
 export default function FirmaDetail() {
   const { id } = useParams<{ id: string }>();
@@ -138,6 +139,9 @@ export default function FirmaDetail() {
 
         setIsCapturing(false);
         setSuccessMsg('Coordenadas de GPS gravadas com sucesso!');
+        triggerFullSyncIfReachable().catch((err) => {
+          console.warn('[drcae] Sync imediato após coordenadas falhou; registo ficará pendente.', err);
+        });
         setTimeout(() => {
           setShowPontoModal(false);
           setSuccessMsg('');

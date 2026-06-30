@@ -5,6 +5,7 @@ import { db } from '../db/db';
 import { ArrowLeft, ArrowRight, User, Calendar, MapPin, AlertTriangle, FileText, Image as ImageIcon, PenLine, Lock, LockKeyhole, X, Check, Save, Info, CheckCircle, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast, customAlert } from '../lib/notifications';
+import { triggerFullSyncIfReachable } from '../lib/sync';
 
 function getMemberAvatar(name: string): { initials: string; gradient: string } {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -107,6 +108,9 @@ export default function VisitaDetail() {
 
       setShowEditModal(false);
       toast.success('Alterações guardadas com sucesso! O registo foi assinalado para ressincronização.');
+      triggerFullSyncIfReachable().catch((err) => {
+        console.warn('[drcae] Sync imediato após retificação falhou; registo ficará pendente.', err);
+      });
     } catch (e) {
       console.error(e);
       toast.error('Erro ao atualizar a fiscalização.');
@@ -322,6 +326,13 @@ export default function VisitaDetail() {
                </h3>
                <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-350 text-xs font-bold px-2 py-0.5 rounded-full">{anexos?.length || 0}</span>
             </div>
+
+            {visita.notes && (
+               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">Observações</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{visita.notes}</p>
+               </div>
+            )}
 
             {anexos && anexos.length > 0 && (
                <div className="grid grid-cols-2 gap-3 mb-4">

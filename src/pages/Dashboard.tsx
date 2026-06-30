@@ -13,11 +13,14 @@ import {
   ArrowRight, 
   ShieldAlert,
   Plus,
-  DownloadCloud
+  DownloadCloud,
+  Smartphone,
+  Hash
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
+import { getPairingCredentials } from '../lib/pairing';
 
 // Helper determinístico para iniciais e gradientes de firmas
 const getAvatarData = (name: string, nif: string) => {
@@ -148,6 +151,7 @@ export default function Dashboard() {
   const isDirectBrowser = React.useMemo(() => {
     return !window.navigator.userAgent.includes('DrcaeWebview');
   }, []);
+  const pairedDevice = React.useMemo(() => getPairingCredentials(), []);
 
   const hasDefined = localStorage.getItem('drcae_equipe_definida') === 'true';
 
@@ -224,6 +228,27 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
+        {pairedDevice?.device_code && (
+          <div className="relative mt-5 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3.5">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-indigo-400/15 border border-indigo-300/20 flex items-center justify-center text-indigo-200 shrink-0">
+                <Smartphone className="w-4.5 h-4.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500">Dispositivo</p>
+                <p className="text-sm font-black text-white truncate">{pairedDevice.alias || 'Sem alias definido'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl bg-slate-950/35 border border-white/10 px-3 py-2 min-w-0 sm:min-w-32">
+              <Hash className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[8px] font-extrabold uppercase tracking-widest text-slate-500">Código</p>
+                <p className="text-xs font-black tracking-widest text-slate-100 font-mono truncate">{pairedDevice.device_code}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Alerta de Registros Pendentes de Sync */}
         {stats.pendingVisitas > 0 && (

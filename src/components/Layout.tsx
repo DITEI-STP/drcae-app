@@ -6,6 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { triggerFullSync } from '../lib/sync';
 import { useAppRealtime } from '../lib/realtime';
+import { checkServerReachable } from '../lib/serverReachability';
 import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
 import { toast } from '../lib/notifications';
@@ -100,20 +101,7 @@ export default function Layout({ onLogout }: LayoutProps) {
   });
 
   const checkConnectivity = useCallback(async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      await fetch('/api/app/auth/salt', {
-        method: 'HEAD',
-        signal: controller.signal,
-        cache: 'no-store',
-      });
-      clearTimeout(timeoutId);
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return checkServerReachable();
   }, []);
 
   // Monitorização de conectividade ativa com polling inteligente

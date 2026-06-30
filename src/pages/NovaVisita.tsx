@@ -23,8 +23,7 @@ import { generateOfflineCode } from '../lib/offlineCode';
 import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
 import CameraCapture from '../components/CameraCapture';
 import SpeechInputButton from '../components/SpeechInputButton';
-import { triggerFullSync } from '../lib/sync';
-import { isServerReachable } from '../lib/serverReachability';
+import { triggerFullSyncIfReachable } from '../lib/sync';
 
 type FirmaDistanceMeta = {
   distanceKm: number | null;
@@ -50,12 +49,39 @@ const RAMOS = getCachedRamos();
 
 const DRAFT_STATE_KEY = 'drcae_nova_visita_draft';
 const MAX_DRAFT_FILES_BYTES = 8 * 1024 * 1024; // 8 MB
+const ATTACHMENT_READ_TIMEOUT_MS = 120_000;
+
+type PendingAnexo = {
+  localId: string;
+  file: File;
+  url: string;
+  data?: string;
+  readError?: string;
+};
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
+    const timeoutId = window.setTimeout(() => {
+      reader.abort();
+      reject(new Error(`Tempo esgotado ao ler ${file.name}.`));
+    }, ATTACHMENT_READ_TIMEOUT_MS);
+    reader.onload = () => {
+      window.clearTimeout(timeoutId);
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error(`Conteúdo inválido em ${file.name}.`));
+      }
+    };
+    reader.onerror = () => {
+      window.clearTimeout(timeoutId);
+      reject(reader.error || new Error(`Erro ao ler ${file.name}.`));
+    };
+    reader.onabort = () => {
+      window.clearTimeout(timeoutId);
+      reject(new Error(`Leitura abortada para ${file.name}.`));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -158,7 +184,7 @@ export default function NovaVisita() {
   const [produtosPrices, setProdutosPrices] = useState<Record<number, {gross: string, retail: string}>>({});
 
   const [notes, setNotes] = useState('');
-  const [anexos, setAnexos] = useState<{file: File, url: string}[]>([]);
+  const [anexos, setAnexos] = useState<PendingAnexo[]>([]);
   const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -376,7 +402,7 @@ export default function NovaVisita() {
     localStorage.removeItem(DRAFT_STATE_KEY);
   };
 
-  const saveDraft = async (currentAnexos: { file: File; url: string }[]) => {
+  const saveDraft = async (currentAnexos: PendingAnexo[]) => {
     try {
       const state = { step, firmaId, representante, atividadeEconomica, date, time, technicians, infracoes, recomendacoes, notes };
       const fileEntries: Array<{ name: string; type: string; data: string }> = [];
@@ -385,7 +411,7 @@ export default function NovaVisita() {
       for (const anx of currentAnexos) {
         if (totalBytes >= MAX_DRAFT_FILES_BYTES) break;
         try {
-          const data = await fileToBase64(anx.file);
+          const data = anx.data || await fileToBase64(anx.file);
           totalBytes += data.length;
           if (totalBytes <= MAX_DRAFT_FILES_BYTES) {
             fileEntries.push({ name: anx.file.name, type: anx.file.type, data });
@@ -422,7 +448,7 @@ export default function NovaVisita() {
       if (Array.isArray(draft.anexos) && draft.anexos.length > 0) {
         const restored = draft.anexos.map((entry: { name: string; type: string; data: string }) => {
           const file = base64ToFile(entry.data, entry.name, entry.type);
-          return { file, url: URL.createObjectURL(file) };
+          return { localId: generateId(), file, url: URL.createObjectURL(file), data: entry.data };
         });
         setAnexos(restored);
       }
@@ -431,13 +457,30 @@ export default function NovaVisita() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const queueAnexos = (files: File[]) => {
+    const pending = files.map((file) => ({
+      localId: generateId(),
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setAnexos(prev => [...prev, ...pending]);
+
+    for (const item of pending) {
+      fileToBase64(item.file)
+        .then(data => {
+          setAnexos(prev => prev.map(anx => anx.localId === item.localId ? { ...anx, data, readError: undefined } : anx));
+        })
+        .catch(err => {
+          console.error('[drcae] Falha ao preparar anexo local:', err);
+          setAnexos(prev => prev.map(anx => anx.localId === item.localId ? { ...anx, readError: err?.message || 'Falha ao preparar anexo.' } : anx));
+        });
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files).map((file: any) => ({
-         file,
-         url: URL.createObjectURL(file)
-      }));
-      setAnexos(prev => [...prev, ...newFiles]);
+      queueAnexos(Array.from(e.target.files));
+      e.target.value = '';
     }
   };
 
@@ -450,12 +493,41 @@ export default function NovaVisita() {
     });
   };
 
+  const persistAnexosLocal = async (visitaId: string, files: PendingAnexo[], notesValue: string) => {
+    for (const anx of files) {
+      const data = anx.data || await fileToBase64(anx.file);
+      const anexo: Anexo = {
+        id: generateId(),
+        visitaId,
+        fileName: anx.file.name,
+        fileType: anx.file.type,
+        data,
+        notes: notesValue,
+        synced: false
+      };
+      await db.anexos.add(anexo);
+      await db.syncQueue.add({ entity: 'anexo', action: 'create', entityId: anexo.id!, payload: anexo, timestamp: Date.now() });
+    }
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    let visitaId: string | null = null;
+    let offlineCode: string | null = null;
+    let anexosToPersist: PendingAnexo[] = [];
+    let notesToPersist = '';
     try {
-    const visitaId = generateId();
-    const offlineCode = await generateOfflineCode();
+    visitaId = generateId();
+    offlineCode = await generateOfflineCode();
+    if (anexos.some(anx => !anx.data)) {
+      toast.info('A preparar anexos para guardar localmente...');
+    }
+    anexosToPersist = await Promise.all(anexos.map(async (anx) => ({
+      ...anx,
+      data: anx.data || await fileToBase64(anx.file),
+    })));
+    notesToPersist = notes;
     const currentRegistrationDate = format(new Date(), 'yyyy-MM-dd');
     const currentRegistrationTime = format(new Date(), 'HH:mm'); // HH:mm — sem segundos para compatibilidade com o backend
     
@@ -513,6 +585,7 @@ export default function NovaVisita() {
       atividadeEconomica,
       geolocation: location,
       synced: false,
+      notes,
       recomendacoes: recomendacoes,
       recomendacoesHistoricas: recomendacoesHistoricas.filter(r => r.atendida !== undefined),
       produtos: supplyProducts
@@ -550,33 +623,19 @@ export default function NovaVisita() {
       await db.syncQueue.add({ entity: 'infracao', action: 'create', entityId: inf.id!, payload: inf, timestamp: Date.now() });
     }
 
-    // Save Anexos (Convert to base64 for dexie)
-    for (const anx of anexos) {
-      const reader = new FileReader();
-      const p = new Promise<void>((resolve) => {
-        reader.onloadend = async () => {
-          const anexo: Anexo = {
-            id: generateId(),
-            visitaId,
-            fileName: anx.file.name,
-            fileType: anx.file.type,
-            data: reader.result as string,
-            notes,
-            synced: false
-          };
-          await db.anexos.add(anexo);
-          await db.syncQueue.add({ entity: 'anexo', action: 'create', entityId: anexo.id!, payload: anexo, timestamp: Date.now() });
-          resolve();
-        };
-      });
-      reader.readAsDataURL(anx.file);
-      await p;
+    if (anexosToPersist.length > 0) {
+      await persistAnexosLocal(visitaId, anexosToPersist, notesToPersist);
     }
 
     clearDraft();
     toast.success(`Fiscalização ${offlineCode} guardada localmente.`);
     navigate(`/visitas/${visitaId}`, { replace: true });
-    if (isServerReachable()) triggerFullSync().catch(() => {});
+    triggerFullSyncIfReachable().catch((err) => {
+      console.warn('[drcae] Sync imediato após fiscalização falhou; registo ficará pendente.', err);
+    });
+    } catch (err) {
+      console.error('[drcae] Erro ao guardar fiscalização local:', err);
+      toast.error('Erro ao guardar localmente. Verifique os dados e tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1413,7 +1472,7 @@ export default function NovaVisita() {
                  <CameraCapture
                    mode={cameraMode}
                    onCapture={(file) => {
-                     setAnexos(prev => [...prev, { file, url: URL.createObjectURL(file) }]);
+                     queueAnexos([file]);
                    }}
                    onClose={() => setShowCamera(false)}
                  />
@@ -1460,7 +1519,7 @@ export default function NovaVisita() {
              {anexos.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 mt-4">
                    {anexos.map((anx, i) => (
-                      <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-sm">
+                      <div key={anx.localId} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-sm">
                          {anx.file.type.startsWith('image/') ? (
                             <img src={anx.url} alt="anexo" className="w-full h-full object-cover" />
                          ) : (
@@ -1469,6 +1528,16 @@ export default function NovaVisita() {
                          <button onClick={() => removeAnexo(i)} className="absolute top-2 right-2 bg-slate-900/60 backdrop-blur-sm text-white rounded-full p-1 hover:bg-slate-900/80 transition-colors">
                             <X className="w-3.5 h-3.5" />
                          </button>
+                         {!anx.data && !anx.readError && (
+                           <div className="absolute inset-x-0 bottom-0 bg-slate-950/70 text-white text-[8px] font-bold text-center py-1 uppercase tracking-wider">
+                             A preparar
+                           </div>
+                         )}
+                         {anx.readError && (
+                           <div className="absolute inset-x-0 bottom-0 bg-red-700/85 text-white text-[8px] font-bold text-center py-1 uppercase tracking-wider">
+                             Erro no anexo
+                           </div>
+                         )}
                       </div>
                    ))}
                 </div>
@@ -1759,9 +1828,9 @@ export default function NovaVisita() {
                    <p className="text-xs text-slate-400 font-medium pl-1">Sem fotografias ou ficheiros anexados.</p>
                 ) : (
                    <div className="grid grid-cols-4 gap-2.5">
-                      {anexos.map((anx, i) => (
+                      {anexos.map((anx) => (
                          <div 
-                            key={i} 
+                            key={anx.localId} 
                             onClick={() => {
                                if (anx.file.type.startsWith('image/')) {
                                   setSelectedPreview(anx.url);

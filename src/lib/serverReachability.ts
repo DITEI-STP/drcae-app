@@ -1,17 +1,31 @@
 let reachable: boolean | null = null;
 let lastProbeAt = 0;
 const PROBE_TTL_MS = 10_000; // reutilizar resultado por 10s
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
+function apiUrl(path: string): string {
+  return `${API_BASE.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
 
 export async function probeServerReachability(): Promise<boolean> {
   try {
-    const res = await fetch('/api/app/health', {
+    const res = await fetch(apiUrl('health'), {
       method: 'GET',
       signal: AbortSignal.timeout(4000),
       cache: 'no-store',
     });
     reachable = res.ok;
   } catch {
-    reachable = false;
+    try {
+      const res = await fetch(apiUrl('app/auth/salt'), {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000),
+        cache: 'no-store',
+      });
+      reachable = res.ok;
+    } catch {
+      reachable = false;
+    }
   }
   lastProbeAt = Date.now();
   return reachable;
