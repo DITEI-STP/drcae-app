@@ -88,9 +88,10 @@ export interface Anexo {
   visitaId: string;
   fileName: string;
   fileType: string;
-  data: ArrayBuffer | Blob | string; // Base64 encriptado
+  data: ArrayBuffer | Blob | string; // Base64 local (vazio quando vem do servidor via pull)
   notes: string;
   synced?: boolean;
+  url?: string; // URL pública do servidor (preenchida após pull sync)
 }
 
 export interface SyncOperation {

@@ -22,6 +22,7 @@ export interface PairingCredentials {
   device_code: string;
   endpoint: string;
   paired_at: string;
+  alias?: string;
 }
 
 function getBrowserName(): string {

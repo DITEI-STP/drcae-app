@@ -22,6 +22,9 @@ import { toast } from '../lib/notifications';
 import { generateOfflineCode } from '../lib/offlineCode';
 import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
 import CameraCapture from '../components/CameraCapture';
+import SpeechInputButton from '../components/SpeechInputButton';
+import { triggerFullSync } from '../lib/sync';
+import { isServerReachable } from '../lib/serverReachability';
 
 type FirmaDistanceMeta = {
   distanceKm: number | null;
@@ -147,6 +150,7 @@ export default function NovaVisita() {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
   const [showDraftBanner, setShowDraftBanner] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Produtos de Cesta Básica
   const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, grossPrice: number | null, retailPrice: number | null}[]>([]);
@@ -447,6 +451,9 @@ export default function NovaVisita() {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
     const visitaId = generateId();
     const offlineCode = await generateOfflineCode();
     const currentRegistrationDate = format(new Date(), 'yyyy-MM-dd');
@@ -569,6 +576,10 @@ export default function NovaVisita() {
     clearDraft();
     toast.success(`Fiscalização ${offlineCode} guardada localmente.`);
     navigate(`/visitas/${visitaId}`, { replace: true });
+    if (isServerReachable()) triggerFullSync().catch(() => {});
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const FALLBACK_INFRACOES = [
@@ -1330,6 +1341,7 @@ export default function NovaVisita() {
              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block pl-1">Adicionar Recomendação Customizada/Personalizada</label>
                 <div className="flex gap-2">
+                   <SpeechInputButton onTranscript={t => setCustomRecommendation(prev => prev ? `${prev} ${t}` : t)} />
                    <input
                       type="text"
                       placeholder="Ex: Reforçar o lacre das caixas de expedição no local de carga..."
@@ -1397,13 +1409,15 @@ export default function NovaVisita() {
              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Captura de Provas</p>
 
              {showCamera && (
-               <CameraCapture
-                 mode={cameraMode}
-                 onCapture={(file) => {
-                   setAnexos(prev => [...prev, { file, url: URL.createObjectURL(file) }]);
-                 }}
-                 onClose={() => setShowCamera(false)}
-               />
+               <div className="w-full max-w-sm mx-auto rounded-2xl overflow-hidden shadow-xl">
+                 <CameraCapture
+                   mode={cameraMode}
+                   onCapture={(file) => {
+                     setAnexos(prev => [...prev, { file, url: URL.createObjectURL(file) }]);
+                   }}
+                   onClose={() => setShowCamera(false)}
+                 />
+               </div>
              )}
 
              <div className="grid grid-cols-3 gap-3">
@@ -1461,8 +1475,11 @@ export default function NovaVisita() {
              )}
 
              <div className="space-y-2 mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações Detalhadas</label>
-                <textarea 
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Observações Detalhadas</label>
+                  <SpeechInputButton onTranscript={t => setNotes(prev => prev ? `${prev} ${t}` : t)} />
+                </div>
+                <textarea
                   rows={4}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
@@ -1827,9 +1844,10 @@ export default function NovaVisita() {
          ) : (
             <button
                onClick={handleSubmit}
-               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 dark:bg-slate-950 hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors shadow-lg shadow-slate-900/20 dark:shadow-none"
+               disabled={isSubmitting}
+               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 dark:bg-slate-950 hover:bg-slate-800 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-slate-900/20 dark:shadow-none"
             >
-               Finalizar Registo
+               {isSubmitting ? 'A guardar...' : 'Finalizar Registo'}
             </button>
          )}
       </div>

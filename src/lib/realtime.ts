@@ -49,7 +49,12 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
       }
     };
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') runPending();
+      if (document.visibilityState === 'visible') {
+        // Garantir sync ao retomar o app, mesmo que eventos Centrifugo
+        // tenham chegado enquanto o JS estava suspenso em background Android.
+        localStorage.setItem(PENDING_SYNC_KEY, '1');
+        runPending();
+      }
     };
     const handleOnline = () => runPending();
 

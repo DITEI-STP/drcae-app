@@ -4,6 +4,7 @@ import { ArrowLeft, Camera, Plus, Trash2, Check, ChevronRight, AlertTriangle, Us
 import { db, generateId, AtividadeEconomica } from '../db/db';
 import { cn } from '../lib/utils';
 import { toast } from '../lib/notifications';
+import { triggerFullSync } from '../lib/sync';
 
 const DISTRITOS = ['Água Grande', 'Cantagalo', 'Caué', 'Lembá', 'Lobata', 'Mé-Zóchi', 'RAP'];
 const NACIONALIDADES = ['Santomense', 'Angolana', 'Cabo-verdiana', 'Galega', 'Chinesa', 'Portuguesa', 'Brasileira', 'Outra'];
@@ -143,6 +144,7 @@ export default function NovaFirma() {
     } else {
       navigate('/firmas', { replace: true });
     }
+    if (navigator.onLine) triggerFullSync().catch(() => {});
   };
 
   const nextStep = () => {

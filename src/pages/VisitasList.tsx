@@ -205,7 +205,7 @@ export default function VisitasList() {
               <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  {v.date}
+                  {v.date}{v.time ? ` ${v.time}` : ''}
                 </div>
                 <div className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800">
                   <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
@@ -244,7 +244,7 @@ export default function VisitasList() {
               <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  {v.date}
+                  {v.date}{v.time ? ` ${v.time}` : ''}
                 </div>
                 <span>{v.technicians.length} téc.</span>
               </div>

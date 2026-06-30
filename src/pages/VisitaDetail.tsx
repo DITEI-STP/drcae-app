@@ -325,19 +325,27 @@ export default function VisitaDetail() {
 
             {anexos && anexos.length > 0 && (
                <div className="grid grid-cols-2 gap-3 mb-4">
-                  {anexos.map(anx => (
-                     <div key={anx.id} className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        {anx.fileType.startsWith('image/') ? (
-                           <img src={anx.data as string} alt={anx.fileName} className="w-full aspect-square object-cover rounded-lg" />
-                        ) : (
-                           <div className="w-full aspect-square bg-blue-50 dark:bg-blue-950/20 rounded-lg flex flex-col items-center justify-center text-blue-500 dark:text-blue-450 gap-2 border border-dashed border-blue-200 dark:border-blue-900/30">
-                              <FileText className="w-8 h-8" />
-                              <span className="text-[10px] uppercase font-bold truncate max-w-full px-2">{anx.fileName.split('.').pop()}</span>
-                           </div>
-                        )}
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 truncate font-mono px-1">{anx.fileName}</p>
-                     </div>
-                  ))}
+                  {anexos.map(anx => {
+                     // Prioriza dados locais (base64), fallback para URL do servidor
+                     const imgSrc = (anx.data && anx.data !== '') ? anx.data as string : (anx as any).url || null;
+                     const isImage = anx.fileType.startsWith('image/');
+                     const isVideo = anx.fileType.startsWith('video/');
+                     return (
+                        <div key={anx.id} className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                           {isImage && imgSrc ? (
+                              <img src={imgSrc} alt={anx.fileName} className="w-full aspect-square object-cover rounded-lg" />
+                           ) : isVideo && imgSrc ? (
+                              <video src={imgSrc} controls className="w-full aspect-square object-cover rounded-lg bg-black" />
+                           ) : (
+                              <div className="w-full aspect-square bg-blue-50 dark:bg-blue-950/20 rounded-lg flex flex-col items-center justify-center text-blue-500 dark:text-blue-450 gap-2 border border-dashed border-blue-200 dark:border-blue-900/30">
+                                 <FileText className="w-8 h-8" />
+                                 <span className="text-[10px] uppercase font-bold truncate max-w-full px-2">{anx.fileName.split('.').pop()}</span>
+                              </div>
+                           )}
+                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 truncate font-mono px-1">{anx.fileName}</p>
+                        </div>
+                     );
+                  })}
                </div>
             )}
           </div>

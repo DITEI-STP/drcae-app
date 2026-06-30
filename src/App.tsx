@@ -24,6 +24,7 @@ import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, Upl
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { triggerFullSync } from './lib/sync';
+import { checkServerReachable, isServerReachable } from './lib/serverReachability';
 import { useSyncState } from './lib/syncState';
 export { useSyncState };
 import NotificationContainer from './components/NotificationContainer';
@@ -878,6 +879,15 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                       } catch { return 'Agente'; }
                     })()}
                   </p>
+                  {(() => {
+                    const creds = getPairingCredentials();
+                    if (!creds?.device_code) return null;
+                    return (
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">
+                        {creds.alias ? `${creds.alias} · ` : ''}{creds.device_code}
+                      </p>
+                    );
+                  })()}
                </div>
             </div>
             <button onClick={onLogout} className="text-sm font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 cursor-pointer">
@@ -899,6 +909,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const pairedDevice = getPairingCredentials();
   const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -969,7 +980,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
     };
 
     try {
-      const isOnline = navigator.onLine;
+      const isOnline = await checkServerReachable();
 
       if (isOnline) {
         // ── CAMINHO ONLINE ────────────────────────────────────────────────
@@ -1035,12 +1046,12 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         </button>
       )}
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex justify-center mb-6">
-          <img src={APP_LOGO_LOGIN_SRC} alt="DRCAE" className="h-20 w-auto max-w-[220px] object-contain" />
+        <div className="flex flex-col items-center justify-center mb-6">
+          <img src={APP_LOGO_LOGIN_SRC} alt="DRCAE" className="h-24 w-24 object-contain" />
         </div>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">
-          {navigator.onLine ? 'Conectado à Internet' : 'Modo Offline - Acesso Criptografado'}
+          {isServerReachable() ? 'Conectado ao Servidor' : 'Modo Offline - Acesso Criptografado'}
         </p>
         
         {error && (
@@ -1077,7 +1088,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
               disabled={loading}
             />
           </div>
-          <button 
+          <button
             type="submit"
             disabled={loading}
             className="w-full py-3.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors uppercase tracking-wide mt-4 disabled:opacity-50"
@@ -1085,6 +1096,14 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
             {loading ? 'A processar...' : 'Iniciar Sessão'}
           </button>
         </form>
+
+        {pairedDevice?.device_code && (
+          <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-1">Dispositivo</p>
+            <p className="font-bold text-slate-700 text-sm">{pairedDevice.alias || 'Sem alias'}</p>
+            <p className="text-xs font-mono text-slate-400">{pairedDevice.device_code}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1338,7 +1357,7 @@ export default function App() {
   const handleLogin = async () => {
     setIsAuthenticated(true);
     setSessionState('valid');
-    if (navigator.onLine && api.getJwtToken()) {
+    if (api.getJwtToken() && await checkServerReachable()) {
       try {
         const assetsData = await api.getAssets();
         localStorage.setItem('drcae_officers_list', JSON.stringify(assetsData.officers || []));
@@ -1358,7 +1377,7 @@ export default function App() {
 
   // Sincronizar equipa no arranque se online e autenticado
   useEffect(() => {
-    if (isAuthenticated && navigator.onLine && api.getJwtToken()) {
+    if (isAuthenticated && isServerReachable() && api.getJwtToken()) {
       const savedTeam = localStorage.getItem('drcae_equipe');
       if (savedTeam) {
         try {

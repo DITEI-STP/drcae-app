@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { RefreshCcw, X, ZoomIn, ZoomOut, Zap, Square, Circle } from 'lucide-react';
+import { RefreshCcw, X, ZoomIn, ZoomOut, Zap, Square, Circle, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface CameraCaptureProps {
@@ -46,6 +46,8 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
   // Video recording state
   const [recording, setRecording] = useState(false);
   const [elapsedSecs, setElapsedSecs] = useState(0);
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const applyTrackCapabilities = useCallback((track: MediaStreamTrack) => {
     trackRef.current = track;
@@ -68,13 +70,34 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
     }
     trackRef.current = null;
 
-    try {
-      const constraints: MediaStreamConstraints =
-        devIndex !== null && cameras[devIndex]
-          ? { video: { deviceId: { exact: cameras[devIndex].deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: mode === 'video' }
-          : { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: mode === 'video' };
+    const videoConstraints =
+      devIndex !== null && cameras[devIndex]
+        ? { deviceId: { exact: cameras[devIndex].deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const tryGetStream = async (withAudio: boolean): Promise<MediaStream> => {
+      return navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: withAudio,
+      });
+    };
+
+    try {
+      let stream: MediaStream;
+      if (mode === 'video') {
+        try {
+          stream = await tryGetStream(true);
+          setAudioUnavailable(false);
+        } catch {
+          // Audio permission denied or unavailable — retry with video only
+          stream = await tryGetStream(false);
+          setAudioUnavailable(true);
+        }
+      } else {
+        stream = await tryGetStream(false);
+        setAudioUnavailable(false);
+      }
+
       streamRef.current = stream;
 
       const track = stream.getVideoTracks()[0];
@@ -91,7 +114,7 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
         setCameras(cams);
       }
     } catch {
-      setError('Não foi possível aceder à câmara. Verifique as permissões do browser.');
+      setError('Não foi possível aceder à câmara. Verifique as permissões do browser ou contexto HTTPS.');
     }
   }, [cameras, applyTrackCapabilities, mode]);
 
@@ -187,32 +210,50 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
   const isVideo = mode === 'video';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      {/* Barra superior */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0">
-        <button onClick={onClose} disabled={recording} className="p-2 text-white/80 hover:text-white disabled:opacity-40 rounded-lg transition-colors">
-          <X className="w-6 h-6" />
+    <div className={cn(
+      'relative flex flex-col bg-black',
+      expanded
+        ? 'fixed inset-0 z-[9999] w-screen h-screen'
+        : 'w-full'
+    )}>
+      {/* Viewfinder */}
+      <div className={cn('relative overflow-hidden', expanded ? 'flex-1' : 'w-full aspect-video')}>
+        {/* Botão fechar — overlay no viewfinder */}
+        <button
+          onClick={onClose}
+          disabled={recording}
+          className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 hover:bg-black/70 text-white/80 hover:text-white disabled:opacity-40 rounded-lg transition-colors"
+        >
+          <X className="w-5 h-5" />
         </button>
-        <div className="flex items-center gap-2">
+        {/* Flip-camera + timer + expandir — overlay no canto superior direito */}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
           {recording && (
-            <span className="flex items-center gap-1.5 text-red-400 text-sm font-semibold">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-red-400 text-xs font-semibold bg-black/60 px-2 py-1 rounded-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
               {formatElapsed(elapsedSecs)}
             </span>
           )}
           {!recording && (
-            <span className="text-white text-sm font-semibold">{isVideo ? 'Vídeo' : 'Câmara'}</span>
+            <span className="text-white/70 text-xs font-semibold bg-black/50 px-2 py-1 rounded-md">
+              {isVideo ? (audioUnavailable ? 'Vídeo (sem som)' : 'Vídeo') : 'Câmara'}
+            </span>
           )}
+          <button
+            onClick={() => setExpanded(e => !e)}
+            disabled={recording}
+            title={expanded ? 'Reduzir' : 'Expandir'}
+            className="p-1.5 bg-black/50 hover:bg-black/70 text-white/80 hover:text-white disabled:opacity-40 rounded-lg transition-colors"
+          >
+            {expanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+          <button onClick={toggleCamera} disabled={recording} className="p-1.5 bg-black/50 hover:bg-black/70 text-white/80 hover:text-white disabled:opacity-40 rounded-lg transition-colors">
+            <RefreshCcw className="w-4 h-4" />
+          </button>
         </div>
-        <button onClick={toggleCamera} disabled={recording} className="p-2 text-white/80 hover:text-white disabled:opacity-40 rounded-lg transition-colors">
-          <RefreshCcw className="w-5 h-5" />
-        </button>
-      </div>
 
-      {/* Viewfinder */}
-      <div className="relative flex-1 overflow-hidden">
         {error ? (
-          <div className="flex flex-col items-center justify-center h-full text-white gap-3 px-6 text-center">
+          <div className="flex flex-col items-center justify-center w-full h-full text-white gap-3 px-6 text-center">
             <X className="w-12 h-12 text-white/40" />
             <p className="text-sm text-white/70">{error}</p>
           </div>
@@ -292,7 +333,7 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
       )}
 
       {/* Botão de captura */}
-      <div className="flex items-center justify-center pb-10 pt-6 bg-black/60 shrink-0">
+      <div className="flex items-center justify-center py-4 bg-black/80 shrink-0">
         {isVideo ? (
           <button
             onClick={recording ? stopRecording : startRecording}

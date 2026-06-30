@@ -89,6 +89,22 @@ export async function syncPull(profile?: string): Promise<number> {
     count += response.infracoes.length;
   }
 
+  // Actualizar Anexos (ficheiros capturados em campo por qualquer dispositivo)
+  // Só guarda registos que ainda não existem localmente (não sobrepõe capturas locais)
+  if (response.anexos && response.anexos.length > 0) {
+    for (const a of response.anexos as import('../db/db').Anexo[]) {
+      if (!a.id) continue;
+      const existing = await db.anexos.get(a.id);
+      if (!existing) {
+        await db.anexos.put({ ...a, synced: true });
+        count++;
+      } else if (!existing.url && (a as any).url) {
+        // Enriquecer registo local com a URL do servidor se ainda não tiver
+        await db.anexos.update(a.id, { url: (a as any).url, synced: true });
+      }
+    }
+  }
+
   // Guardar livros de cálculo (supplies) em cache local por operador
   if (response.supplies && response.supplies.length > 0) {
     for (const supply of response.supplies as { firmaId: string; products: any[] }[]) {
