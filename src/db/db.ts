@@ -57,8 +57,10 @@ export interface Visita {
   produtos?: ProdutoPreco[];
   createdAt?: number;
   locationAutoCaptured?: boolean;
-  // Código legível gerado localmente antes do sync (ex: FIS-A3F2XY-20260624-001)
+  // Código chassi gerado localmente antes do sync (ex: F26001000017X83)
   offlineCode?: string;
+  // Código oficial (matrícula) atribuído pelo servidor após sync (ex: FN-26000001)
+  officialCode?: string;
   // Determinado no momento do sync: 'confirmada' se sincronizado em ≤ 5 min, 'pendente' caso contrário
   confirmationStatus?: 'confirmada' | 'pendente';
 }
@@ -352,6 +354,17 @@ export class DrcaeDB extends Dexie {
     this.version(6).stores({
       firmas: 'id, synced',
       visitas: 'id, firmaId, synced, offlineCode',
+      infracoes: 'id, visitaId, synced',
+      anexos: 'id, visitaId, synced',
+      attachments: 'id, visitaId, synced',
+      syncQueue: '++id, entity, action, timestamp',
+      metadata: 'key'
+    });
+
+    // Versão 7 — adiciona officialCode (código oficial FN-YYSSSSSS após sync) à Visita
+    this.version(7).stores({
+      firmas: 'id, synced',
+      visitas: 'id, firmaId, synced, offlineCode, officialCode',
       infracoes: 'id, visitaId, synced',
       anexos: 'id, visitaId, synced',
       attachments: 'id, visitaId, synced',

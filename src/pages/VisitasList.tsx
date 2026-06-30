@@ -5,6 +5,21 @@ import { Search, Plus, Calendar, ShieldAlert, ClipboardList, LayoutList, LayoutG
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
+type VisitNumberSource = {
+  id?: string;
+  synced?: boolean;
+  offlineCode?: string | null;
+  officialCode?: string | null;
+};
+
+function getVisitNumber(visita: VisitNumberSource) {
+  const fallback = visita.id ? `#${visita.id.slice(0, 8).toUpperCase()}` : '—';
+  if (visita.synced && visita.officialCode) {
+    return { label: 'Nº fiscalização', value: visita.officialCode };
+  }
+  return { label: 'Nº inicial', value: visita.offlineCode || fallback };
+}
+
 export default function VisitasList() {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() =>
@@ -32,8 +47,12 @@ export default function VisitasList() {
 
       let filtered = comFirma;
       if (search) {
+        const normalizedSearch = search.toLowerCase();
         filtered = filtered.filter(v =>
-          v.firmaName.toLowerCase().includes(search.toLowerCase()) || v.id?.includes(search)
+          v.firmaName.toLowerCase().includes(normalizedSearch) ||
+          v.id?.toLowerCase().includes(normalizedSearch) ||
+          v.offlineCode?.toLowerCase().includes(normalizedSearch) ||
+          v.officialCode?.toLowerCase().includes(normalizedSearch)
         );
       }
 
@@ -177,78 +196,110 @@ export default function VisitasList() {
           </div>
         ) : viewMode === 'list' ? (
           visitas?.map(v => (
-            <Link
-              key={v.id}
-              to={`/visitas/${v.id}`}
-              className="block bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md dark:hover:bg-slate-800 transition-all"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 pr-3">
-                  <p className="text-[10px] text-slate-400 font-mono mb-1">#{v.id?.substring(0, 8).toUpperCase()}</p>
-                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight line-clamp-2">{v.firmaName}</h3>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className={cn('text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md', statusColors(v.status))}>
-                    {v.status}
-                  </span>
-                  <span className={cn(
-                    'text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-1 border',
-                    v.synced 
-                      ? 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700' 
-                      : 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:border-orange-900/30'
-                  )}>
-                    {v.synced ? <Check className="w-2.5 h-2.5 text-emerald-500" /> : <RefreshCw className="w-2.5 h-2.5 text-orange-500" />}
-                    {v.synced ? 'Sinc' : 'Pendente'}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  {v.date}{v.time ? ` ${v.time}` : ''}
-                </div>
-                <div className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800">
-                  <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
-                  {v.technicians.length} Téc.
-                </div>
-              </div>
-            </Link>
+            (() => {
+              const visitNumber = getVisitNumber(v);
+              return (
+                <Link
+                  key={v.id}
+                  to={`/visitas/${v.id}`}
+                  className="block bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md dark:hover:bg-slate-800 transition-all"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 pr-3">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[9px] uppercase tracking-wider font-black text-slate-400 dark:text-slate-500">
+                          {visitNumber.label}
+                        </span>
+                        <span className={cn(
+                          'text-[10px] font-mono font-black px-2 py-0.5 rounded-md border',
+                          v.synced && v.officialCode
+                            ? 'bg-blue-50 border-blue-100 text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/30 dark:text-blue-300'
+                            : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                        )}>
+                          {visitNumber.value}
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight line-clamp-2">{v.firmaName}</h3>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className={cn('text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md', statusColors(v.status))}>
+                        {v.status}
+                      </span>
+                      <span className={cn(
+                        'text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-1 border',
+                        v.synced
+                          ? 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700'
+                          : 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:border-orange-900/30'
+                      )}>
+                        {v.synced ? <Check className="w-2.5 h-2.5 text-emerald-500" /> : <RefreshCw className="w-2.5 h-2.5 text-orange-500" />}
+                        {v.synced ? 'Sinc' : 'Pendente'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      {v.date}{v.time ? ` ${v.time}` : ''}
+                    </div>
+                    <div className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800">
+                      <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
+                      {v.technicians.length} Téc.
+                    </div>
+                  </div>
+                </Link>
+              );
+            })()
           ))
         ) : (
           visitas?.map(v => (
-            <Link
-              key={v.id}
-              to={`/visitas/${v.id}`}
-              className="flex flex-col bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md dark:hover:bg-slate-800 transition-all gap-2"
-            >
-              <div className="flex justify-between items-center w-full gap-2">
-                <span className={cn('text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md', statusColors(v.status))}>
-                  {v.status}
-                </span>
-                <span 
-                  title={v.synced ? 'Sincronizada' : 'Pendente de sincronização'}
-                  className={cn(
-                    'p-1 rounded-md flex items-center justify-center border shrink-0',
-                    v.synced 
-                      ? 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700' 
-                      : 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:border-orange-900/30'
-                  )}
+            (() => {
+              const visitNumber = getVisitNumber(v);
+              return (
+                <Link
+                  key={v.id}
+                  to={`/visitas/${v.id}`}
+                  className="flex flex-col bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md dark:hover:bg-slate-800 transition-all gap-2"
                 >
-                  {v.synced ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <RefreshCw className="w-3.5 h-3.5 text-orange-500" />}
-                </span>
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight line-clamp-3">{v.firmaName}</h3>
-                <p className="text-[10px] text-slate-400 font-mono mt-1">#{v.id?.substring(0, 8).toUpperCase()}</p>
-              </div>
-              <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {v.date}{v.time ? ` ${v.time}` : ''}
-                </div>
-                <span>{v.technicians.length} téc.</span>
-              </div>
-            </Link>
+                  <div className="flex justify-between items-center w-full gap-2">
+                    <span className={cn('text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md', statusColors(v.status))}>
+                      {v.status}
+                    </span>
+                    <span
+                      title={v.synced ? 'Sincronizada' : 'Pendente de sincronização'}
+                      className={cn(
+                        'p-1 rounded-md flex items-center justify-center border shrink-0',
+                        v.synced
+                          ? 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700'
+                          : 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:border-orange-900/30'
+                      )}
+                    >
+                      {v.synced ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <RefreshCw className="w-3.5 h-3.5 text-orange-500" />}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight line-clamp-3">{v.firmaName}</h3>
+                    <div className="mt-2 inline-flex flex-col gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
+                      <span className="text-[8px] uppercase tracking-wider font-black text-slate-400 dark:text-slate-500">
+                        {visitNumber.label}
+                      </span>
+                      <span className={cn(
+                        'text-[10px] font-mono font-black',
+                        v.synced && v.officialCode ? 'text-blue-700 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'
+                      )}>
+                        {visitNumber.value}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {v.date}{v.time ? ` ${v.time}` : ''}
+                    </div>
+                    <span>{v.technicians.length} téc.</span>
+                  </div>
+                </Link>
+              );
+            })()
           ))
         )}
       </div>

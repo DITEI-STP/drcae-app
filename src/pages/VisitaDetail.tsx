@@ -441,9 +441,16 @@ export default function VisitaDetail() {
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mb-1">
-                {visita.offlineCode || `#${visita.id?.slice(0, 8).toUpperCase()}`}
-              </p>
+              <div className="flex flex-col gap-0.5 mb-1">
+                {visita.officialCode ? (
+                  <p className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono tracking-wider">
+                    {visita.officialCode}
+                  </p>
+                ) : null}
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                  {visita.offlineCode || `#${visita.id?.slice(0, 8).toUpperCase()}`}
+                </p>
+              </div>
               <button onClick={() => navigate(`/firmas/${visita.firmaId}`)} className="text-left group cursor-pointer">
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1">
                   {firma?.name || 'Firma Desconhecida'}
@@ -514,13 +521,14 @@ export default function VisitaDetail() {
           {infracoes && infracoes.length > 0 ? (
             <div className="space-y-2">
               {infracoes.map(inf => (
-                <InfractionCard
-                  key={inf.id}
-                  type={inf.type}
-                  severity={inf.severity}
-                  minimum_penalty={inf.minimum_penalty}
-                  maximum_penalty={inf.maximum_penalty}
-                />
+                <React.Fragment key={inf.id}>
+                  <InfractionCard
+                    type={inf.type}
+                    severity={inf.severity}
+                    minimum_penalty={inf.minimum_penalty}
+                    maximum_penalty={inf.maximum_penalty}
+                  />
+                </React.Fragment>
               ))}
             </div>
           ) : (

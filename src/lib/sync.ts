@@ -110,6 +110,7 @@ export async function syncPull(profile?: string): Promise<number> {
           notes: v.notes || existing?.notes,
           atividadeEconomica: v.atividadeEconomica ?? existing?.atividadeEconomica,
           offlineCode: v.offlineCode ?? existing?.offlineCode,
+          officialCode: v.officialCode ?? existing?.officialCode,
           locationAutoCaptured: v.locationAutoCaptured ?? existing?.locationAutoCaptured,
           // 4. Metadados de sync sempre actualizados
           synced: true,
