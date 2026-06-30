@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -12,7 +12,7 @@ import { toast } from '../lib/notifications';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
-const navItems = [
+const allNavItems = [
   { to: '/', icon: Home, label: 'Início' },
   { to: '/firmas', icon: Briefcase, label: 'Firmas' },
   { to: '/visitas', icon: ClipboardList, label: 'Visitas' },
@@ -21,6 +21,10 @@ const navItems = [
   { to: '/central', icon: RadioTower, label: 'Central' },
   { to: '/settings', icon: Settings, label: 'Sistema' },
 ];
+
+const PRIMARY_NAV_COUNT = 4;
+const primaryNavItems = allNavItems.slice(0, PRIMARY_NAV_COUNT);
+const overflowNavItems = allNavItems.slice(PRIMARY_NAV_COUNT);
 
 interface LayoutProps {
   onLogout: () => void;
@@ -36,8 +40,10 @@ export default function Layout({ onLogout }: LayoutProps) {
   const [syncErrorMsg, setSyncErrorMsg] = useState<string | null>(null);
   const [syncNeedsAuth, setSyncNeedsAuth] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const { theme, setTheme } = useTheme();
   const avatarRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -171,16 +177,24 @@ export default function Layout({ onLogout }: LayoutProps) {
     return () => clearInterval(id);
   }, [isOnline, syncData]);
 
-  // Fechar dropdown ao clicar fora
+  // Fechar dropdowns ao clicar fora
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
         setShowAvatarMenu(false);
       }
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Fechar menu "Mais" ao navegar
+  useEffect(() => {
+    setShowMoreMenu(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const hasFullscreenSupport = typeof document.documentElement.requestFullscreen === 'function';
@@ -363,7 +377,7 @@ export default function Layout({ onLogout }: LayoutProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar (Tablet & Desktop) */}
         <nav className="hidden md:flex flex-col w-20 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 items-center py-6 gap-6 z-20 shrink-0">
-          {navItems.map((item) => (
+          {allNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -391,8 +405,8 @@ export default function Layout({ onLogout }: LayoutProps) {
 
       {/* Bottom Navigation (Mobile) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-safe z-20 shrink-0">
-        <div className="flex justify-around max-w-screen-md mx-auto">
-          {navItems.map((item) => (
+        <div className="flex justify-around max-w-screen-md mx-auto relative" ref={moreMenuRef}>
+          {primaryNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -408,6 +422,43 @@ export default function Layout({ onLogout }: LayoutProps) {
               <span className="text-[10px] uppercase tracking-wide">{item.label}</span>
             </NavLink>
           ))}
+
+          {/* Botão "Mais" */}
+          <button
+            onClick={() => setShowMoreMenu(v => !v)}
+            className={cn(
+              'flex flex-col items-center py-3 px-3 w-full transition-colors',
+              showMoreMenu || overflowNavItems.some(item => location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to)))
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+            )}
+          >
+            <LayoutGrid className="w-6 h-6 mb-1" />
+            <span className="text-[10px] uppercase tracking-wide">Mais</span>
+          </button>
+
+          {/* Painel de overflow */}
+          {showMoreMenu && (
+            <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-bottom-right">
+              {overflowNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  onClick={() => setShowMoreMenu(false)}
+                  className={({ isActive }) => cn(
+                    'flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  )}
+                >
+                  <item.icon className="w-5 h-5 shrink-0" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
         </div>
       </nav>
     </div>

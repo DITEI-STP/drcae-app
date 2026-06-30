@@ -15,7 +15,7 @@ L.Icon.Default.mergeOptions({
 });
 import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, MapPin, Camera, Image as ImageIcon, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
+import { ArrowLeft, MapPin, Camera, Video, FolderOpen, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { toast } from '../lib/notifications';
@@ -45,14 +45,25 @@ const getCachedRamos = (): string[] => {
 
 const RAMOS = getCachedRamos();
 
-const isMobileDevice = (): boolean => {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  const userAgent = navigator.userAgent || '';
-  const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) ||
-    (/Macintosh/i.test(userAgent) && isTouchDevice);
-  return isMobileUA && isTouchDevice;
-};
+const DRAFT_STATE_KEY = 'drcae_nova_visita_draft';
+const MAX_DRAFT_FILES_BYTES = 8 * 1024 * 1024; // 8 MB
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToFile(data: string, name: string, type: string): File {
+  const arr = data.split(',');
+  const bstr = atob(arr[1]);
+  const u8arr = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+  return new File([new Blob([u8arr], { type })], name, { type });
+}
 
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
@@ -134,6 +145,8 @@ export default function NovaVisita() {
   const [customRecommendation, setCustomRecommendation] = useState('');
   const [searchInfracao, setSearchInfracao] = useState('');
   const [showCamera, setShowCamera] = useState(false);
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
 
   // Produtos de Cesta Básica
   const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, grossPrice: number | null, retailPrice: number | null}[]>([]);
@@ -145,7 +158,6 @@ export default function NovaVisita() {
   const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState('');
 
@@ -355,6 +367,66 @@ export default function NovaVisita() {
   const handleNext = () => setStep(s => Math.min(TOTAL_STEPS, s + 1));
   const handlePrev = () => setStep(s => Math.max(1, s - 1));
 
+  // ── Draft persistence ─────────────────────────────────────────────────────
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_STATE_KEY);
+  };
+
+  const saveDraft = async (currentAnexos: { file: File; url: string }[]) => {
+    try {
+      const state = { step, firmaId, representante, atividadeEconomica, date, time, technicians, infracoes, recomendacoes, notes };
+      const fileEntries: Array<{ name: string; type: string; data: string }> = [];
+      let totalBytes = JSON.stringify(state).length;
+
+      for (const anx of currentAnexos) {
+        if (totalBytes >= MAX_DRAFT_FILES_BYTES) break;
+        try {
+          const data = await fileToBase64(anx.file);
+          totalBytes += data.length;
+          if (totalBytes <= MAX_DRAFT_FILES_BYTES) {
+            fileEntries.push({ name: anx.file.name, type: anx.file.type, data });
+          }
+        } catch {}
+      }
+
+      localStorage.setItem(DRAFT_STATE_KEY, JSON.stringify({ ...state, anexos: fileEntries }));
+    } catch {
+      // Quota exceeded — salva apenas o estado de texto
+      try {
+        const state = { step, firmaId, representante, atividadeEconomica, date, time, technicians, infracoes, recomendacoes, notes, anexos: [] };
+        localStorage.setItem(DRAFT_STATE_KEY, JSON.stringify(state));
+      } catch {}
+    }
+  };
+
+  // Restauro de draft no mount
+  useEffect(() => {
+    const raw = localStorage.getItem(DRAFT_STATE_KEY);
+    if (!raw) return;
+    try {
+      const draft = JSON.parse(raw);
+      if (draft.step) setStep(draft.step);
+      if (draft.firmaId) setFirmaId(draft.firmaId);
+      if (draft.representante) setRepresentante(draft.representante);
+      if (draft.atividadeEconomica) setAtividadeEconomica(draft.atividadeEconomica);
+      if (draft.date) setDate(draft.date);
+      if (draft.time) setTime(draft.time);
+      if (Array.isArray(draft.technicians)) setTechnicians(draft.technicians);
+      if (Array.isArray(draft.infracoes)) setInfracoes(draft.infracoes);
+      if (Array.isArray(draft.recomendacoes)) setRecomendacoes(draft.recomendacoes);
+      if (draft.notes) setNotes(draft.notes);
+      if (Array.isArray(draft.anexos) && draft.anexos.length > 0) {
+        const restored = draft.anexos.map((entry: { name: string; type: string; data: string }) => {
+          const file = base64ToFile(entry.data, entry.name, entry.type);
+          return { file, url: URL.createObjectURL(file) };
+        });
+        setAnexos(restored);
+      }
+      setShowDraftBanner(true);
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files).map((file: any) => ({
@@ -494,6 +566,7 @@ export default function NovaVisita() {
       await p;
     }
 
+    clearDraft();
     toast.success(`Fiscalização ${offlineCode} guardada localmente.`);
     navigate(`/visitas/${visitaId}`, { replace: true });
   };
@@ -587,6 +660,18 @@ export default function NovaVisita() {
 
   return (
     <div className="flex flex-col h-full bg-[#F5F7FA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 relative">
+      {/* Banner de rascunho restaurado */}
+      {showDraftBanner && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-medium shrink-0">
+          <span>Rascunho anterior restaurado. Pode continuar onde ficou.</span>
+          <button
+            onClick={() => { setShowDraftBanner(false); clearDraft(); }}
+            className="shrink-0 underline hover:no-underline"
+          >
+            Descartar
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 sticky top-0 bg-white dark:bg-slate-900 z-10 flex items-center justify-between">
          <div className="flex items-center">
@@ -1313,6 +1398,7 @@ export default function NovaVisita() {
 
              {showCamera && (
                <CameraCapture
+                 mode={cameraMode}
                  onCapture={(file) => {
                    setAnexos(prev => [...prev, { file, url: URL.createObjectURL(file) }]);
                  }}
@@ -1320,29 +1406,42 @@ export default function NovaVisita() {
                />
              )}
 
-             <div className="grid grid-cols-2 gap-4">
+             <div className="grid grid-cols-3 gap-3">
                <button
                  onClick={() => {
-                   if (isMobileDevice() && navigator.mediaDevices?.getUserMedia) {
-                     setShowCamera(true);
-                   } else {
-                     cameraInputRef.current?.click();
-                   }
+                   setCameraMode('photo');
+                   setShowCamera(true);
                  }}
-                 className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-blue-600"
+                 className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-blue-600"
                >
-                  <Camera className="w-8 h-8" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Câmara</span>
+                  <Camera className="w-7 h-7" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Foto</span>
                </button>
 
-               <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-blue-600">
-                  <ImageIcon className="w-8 h-8" />
+               <button
+                 onClick={() => {
+                   setCameraMode('video');
+                   setShowCamera(true);
+                 }}
+                 className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-red-500"
+               >
+                  <Video className="w-7 h-7" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Vídeo</span>
+               </button>
+
+               <button
+                 onClick={async () => {
+                   await saveDraft(anexos);
+                   fileInputRef.current?.click();
+                 }}
+                 className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-emerald-600"
+               >
+                  <FolderOpen className="w-7 h-7" />
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Galeria</span>
                </button>
              </div>
 
-             <input type="file" accept="image/*" capture="environment" className="hidden" ref={cameraInputRef} onChange={handleFileChange} />
-             <input type="file" accept="image/*,video/*,.pdf" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+             <input type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
 
              {anexos.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 mt-4">
