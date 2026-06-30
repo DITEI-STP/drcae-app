@@ -20,7 +20,7 @@ import PendentesPage from './pages/PendentesPage';
 import SetupPage from './pages/SetupPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap, Sun, Moon, Laptop } from 'lucide-react';
+import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap, Sun, Moon, Laptop, Bug, Trash2 } from 'lucide-react';
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { triggerFullSync } from './lib/sync';
@@ -38,6 +38,7 @@ import {
   clearPairingCredentials,
 } from './lib/pairing';
 import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
+import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSynced, type AppLogEntry } from './lib/appLogs';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 const APP_LOGO_LOGIN_SRC = '/app/img/logo_login.png';
@@ -53,6 +54,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const syncState = useSyncState();
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [elapsedSecs, setElapsedSecs] = useState(0);
+  const [appLogs, setAppLogs] = useState<AppLogEntry[]>(() => getAppLogs());
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stats = useLiveQuery(async () => {
@@ -82,6 +84,18 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
       totalAnexos, unsyncedAnexos, syncedAnexos: totalAnexos - unsyncedAnexos,
       queueLength: 0,
       lastSyncAt,
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshLogs = () => setAppLogs(getAppLogs());
+    window.addEventListener('drcae:app-log', refreshLogs);
+    window.addEventListener('drcae:app-log-cleared', refreshLogs);
+    window.addEventListener('drcae:app-log-synced', refreshLogs);
+    return () => {
+      window.removeEventListener('drcae:app-log', refreshLogs);
+      window.removeEventListener('drcae:app-log-cleared', refreshLogs);
+      window.removeEventListener('drcae:app-log-synced', refreshLogs);
     };
   }, []);
 
@@ -202,6 +216,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
       const syncedAnxList = await db.anexos.filter(a => a.synced === true).toArray();
       await db.anexos.bulkDelete(syncedAnxList.map(a => a.id!));
+      await db.attachments.bulkDelete(syncedAnxList.map(a => a.id!)).catch(() => {});
 
       toast.success('A cache de dados sincronizados foi limpa com sucesso. Os dados offline não submetidos foram preservados!');
     } catch (e) {
@@ -262,8 +277,9 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     elapsedRef.current = setInterval(() => setElapsedSecs(s => s + 1), 1000);
     try {
       await triggerFullSync();
-    } catch (_) {
+    } catch (err) {
       // erro já emitido para syncState
+      addAppLog('error', 'settings', 'Sincronização manual falhou', err);
     } finally {
       if (elapsedRef.current) clearInterval(elapsedRef.current);
       elapsedRef.current = null;
@@ -507,6 +523,86 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* LOGS TÉCNICOS */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Bug className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Erros e Logs Técnicos</h3>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Registos locais recentes deste dispositivo</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              clearAppLogs();
+              toast.info('Logs técnicos limpos.');
+            }}
+            disabled={appLogs.length === 0}
+            className={cn(
+              'p-2 rounded-lg border transition-colors',
+              appLogs.length === 0
+                ? 'text-slate-300 dark:text-slate-700 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                : 'text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/20'
+            )}
+            title="Limpar logs"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5">
+          {appLogs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 p-5 text-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Sem erros registados neste dispositivo.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+              {appLogs.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={cn(
+                    'rounded-xl border p-3',
+                    entry.level === 'error'
+                      ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/70 dark:bg-rose-950/10'
+                      : entry.level === 'warn'
+                      ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/10'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] uppercase tracking-widest font-black text-slate-500 dark:text-slate-400">{entry.scope}</span>
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                          {new Date(entry.ts).toLocaleString('pt-PT')}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">{entry.message}</p>
+                    </div>
+                    <span className={cn(
+                      'text-[9px] uppercase font-black px-2 py-1 rounded-md shrink-0',
+                      entry.level === 'error'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                        : entry.level === 'warn'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                    )}>
+                      {entry.level}
+                    </span>
+                  </div>
+                  {entry.details && (
+                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 text-slate-100 p-2 text-[10px] leading-relaxed">
+                      {entry.details}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1214,6 +1310,35 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [devicePending, setDevicePending] = useState(false);
   const [sessionState, setSessionState] = useState<SessionState>('checking');
+  const rootLogsFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const flushLogs = () => {
+      if (rootLogsFlushRef.current) window.clearTimeout(rootLogsFlushRef.current);
+      rootLogsFlushRef.current = window.setTimeout(async () => {
+        if (!api.getJwtToken()) return;
+        const pending = getPendingAppLogs().slice(0, 50);
+        if (pending.length === 0) return;
+        try {
+          const res = await api.pushDeviceLogs(pending);
+          markAppLogsSynced(res.accepted || []);
+        } catch {
+          // Mantém pendente para nova tentativa.
+        }
+      }, 1500);
+    };
+
+    flushLogs();
+    const intervalId = window.setInterval(flushLogs, 30_000);
+    window.addEventListener('drcae:app-log', flushLogs);
+    window.addEventListener('drcae:sync-profile-updated', flushLogs);
+    return () => {
+      window.removeEventListener('drcae:app-log', flushLogs);
+      window.removeEventListener('drcae:sync-profile-updated', flushLogs);
+      window.clearInterval(intervalId);
+      if (rootLogsFlushRef.current) window.clearTimeout(rootLogsFlushRef.current);
+    };
+  }, []);
 
   // Inicialização de sessão
   useEffect(() => {

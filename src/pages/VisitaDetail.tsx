@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -40,6 +40,38 @@ export default function VisitaDetail() {
   const [editStatus, setEditStatus] = useState('');
   const [editAtividade, setEditAtividade] = useState('');
   const [editTechnicians, setEditTechnicians] = useState('');
+  const [localAttachmentUrls, setLocalAttachmentUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!id) return;
+
+    let active = true;
+    const objectUrls: string[] = [];
+
+    db.attachments
+      .where('visitaId')
+      .equals(id)
+      .toArray()
+      .then((attachments) => {
+        if (!active) return;
+        const nextUrls: Record<string, string> = {};
+        for (const attachment of attachments) {
+          const url = URL.createObjectURL(attachment.data);
+          objectUrls.push(url);
+          nextUrls[attachment.id] = url;
+        }
+        setLocalAttachmentUrls(nextUrls);
+      })
+      .catch((err) => {
+        console.warn('[drcae] Falha ao carregar anexos locais:', err);
+        if (active) setLocalAttachmentUrls({});
+      });
+
+    return () => {
+      active = false;
+      for (const url of objectUrls) URL.revokeObjectURL(url);
+    };
+  }, [id, anexos?.length]);
 
   const canEdit = () => {
     if (!visita) return false;
@@ -337,8 +369,9 @@ export default function VisitaDetail() {
             {anexos && anexos.length > 0 && (
                <div className="grid grid-cols-2 gap-3 mb-4">
                   {anexos.map(anx => {
-                     // Prioriza dados locais (base64), fallback para URL do servidor
-                     const imgSrc = (anx.data && anx.data !== '') ? anx.data as string : (anx as any).url || null;
+                     const imgSrc = (anx.data && anx.data !== '')
+                       ? anx.data as string
+                       : (anx.id ? localAttachmentUrls[anx.id] : null) || (anx as any).url || null;
                      const isImage = anx.fileType.startsWith('image/');
                      const isVideo = anx.fileType.startsWith('video/');
                      return (

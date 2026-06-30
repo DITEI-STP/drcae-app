@@ -88,10 +88,19 @@ export interface Anexo {
   visitaId: string;
   fileName: string;
   fileType: string;
-  data: ArrayBuffer | Blob | string; // Base64 local (vazio quando vem do servidor via pull)
+  data: ArrayBuffer | Blob | string; // Legado/base64 pequeno; ficheiros novos ficam em attachments.
   notes: string;
   synced?: boolean;
   url?: string; // URL pública do servidor (preenchida após pull sync)
+  file_ref?: string;
+  uploadSize?: number;
+}
+
+export interface Attachment {
+  id: string;
+  visitaId: string;
+  data: Blob;
+  synced?: boolean;
 }
 
 export interface SyncOperation {
@@ -282,6 +291,7 @@ export class DrcaeDB extends Dexie {
   visitas!: Table<Visita, string>;
   infracoes!: Table<Infracao, string>;
   anexos!: Table<Anexo, string>;
+  attachments!: Table<Attachment, string>;
   syncQueue!: Table<SyncOperation, number>;
   metadata!: Table<MetadataRecord, string>;
 
@@ -327,6 +337,28 @@ export class DrcaeDB extends Dexie {
       metadata: 'key'
     });
 
+    // Versão 5 — separa bytes de anexos do JSON criptografado para suportar ficheiros grandes
+    this.version(5).stores({
+      firmas: 'id, synced',
+      visitas: 'id, firmaId, synced, offlineCode',
+      infracoes: 'id, visitaId, synced',
+      anexos: 'id, visitaId, synced',
+      attachments: 'id, visitaId, synced',
+      syncQueue: '++id, entity, action, timestamp',
+      metadata: 'key'
+    });
+
+    // Versão 6 — consolida o nome inglês da store bruta de anexos: attachments.
+    this.version(6).stores({
+      firmas: 'id, synced',
+      visitas: 'id, firmaId, synced, offlineCode',
+      infracoes: 'id, visitaId, synced',
+      anexos: 'id, visitaId, synced',
+      attachments: 'id, visitaId, synced',
+      syncQueue: '++id, entity, action, timestamp',
+      metadata: 'key'
+    });
+
     // Envolver tabelas para criptografia transparente
     const firmaFields = [
       'logo', 'nif', 'name', 'district', 'address', 'contact', 'email', 'type',
@@ -347,6 +379,7 @@ export class DrcaeDB extends Dexie {
     this.visitas = new EncryptedTable(this.table('visitas'), visitaFields) as any;
     this.infracoes = new EncryptedTable(this.table('infracoes'), infracaoFields) as any;
     this.anexos = new EncryptedTable(this.table('anexos'), anexoFields) as any;
+    this.attachments = this.table('attachments') as Table<Attachment, string>;
     this.metadata = new EncryptedTable(this.table('metadata'), ['value']) as any;
   }
 
@@ -387,7 +420,7 @@ export class DrcaeDB extends Dexie {
   }): Promise<void> {
     await this.transaction('rw',
       this.table('firmas'), this.table('visitas'),
-      this.table('infracoes'), this.table('anexos'),
+      this.table('infracoes'), this.table('anexos'), this.table('attachments'),
       async () => {
         for (const id of updates.firmaIds)
           await this.table('firmas').update(id, { synced: true });
@@ -397,6 +430,8 @@ export class DrcaeDB extends Dexie {
           await this.table('infracoes').update(id, { synced: true });
         for (const id of updates.anexoIds)
           await this.table('anexos').update(id, { synced: true });
+        for (const id of updates.anexoIds)
+          await this.table('attachments').update(id, { synced: true }).catch(() => {});
       }
     );
   }

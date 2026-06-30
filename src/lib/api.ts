@@ -1,4 +1,6 @@
 import { getDrcaeAppVersion } from './version';
+import { addAppLog } from './appLogs';
+import type { AppLogEntry } from './appLogs';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
 
@@ -96,6 +98,57 @@ async function request(path: string, options: RequestInit = {}, silent = false):
       const errJson = JSON.parse(errorText);
       errorMessage = errJson.message || errorMessage;
     } catch {}
+    if (path !== 'logs') {
+      addAppLog('error', 'api', `${options.method || 'GET'} ${path}: ${errorMessage}`, errorText);
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+}
+
+async function rawRequest(path: string, options: RequestInit = {}, silent = false): Promise<any> {
+  const url = `${API_BASE}/${path}`;
+  const headers = new Headers(options.headers || {});
+
+  const token = getJwtToken();
+  if (token) {
+    headers.set('Authorization', token);
+  }
+
+  let response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401 && !path.includes('auth/refresh') && !path.includes('auth/login')) {
+    const refreshed = await refreshSilent();
+    if (refreshed) {
+      headers.set('Authorization', getJwtToken() || '');
+      response = await fetch(url, { ...options, headers });
+    } else if (silent) {
+      throw new AuthSyncError();
+    } else {
+      setJwtToken(null);
+      window.dispatchEvent(new Event('auth-expired'));
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+  }
+
+  if (response.status === 403) {
+    const errJson = await response.json().catch(() => ({}));
+    const msg = errJson.message || 'Acesso negado.';
+    if (msg.includes('aprovação')) {
+      window.dispatchEvent(new CustomEvent('device-pending-approval', { detail: { message: msg } }));
+    }
+    throw new Error(msg);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `Erro HTTP ${response.status}`;
+    try {
+      const errJson = JSON.parse(errorText);
+      errorMessage = errJson.message || errorMessage;
+    } catch {}
+    addAppLog('error', 'api-raw', `${options.method || 'GET'} ${path}: ${errorMessage}`, errorText);
     throw new Error(errorMessage);
   }
 
@@ -205,6 +258,55 @@ export async function pushSync(payload: any): Promise<any> {
     body: JSON.stringify({
       device_id: getDeviceId(),
       ...payload,
+    }),
+  }, true);
+}
+
+export async function uploadSyncAttachment(input: {
+  id: string;
+  visitaId: string;
+  fileName: string;
+  fileType: string;
+  blob: Blob;
+}): Promise<{
+  id: string;
+  visitaId: string | null;
+  file_ref: string;
+  fileName: string;
+  fileType: string;
+  size: number;
+  url?: string;
+}> {
+  return rawRequest(`sync/attachments/${encodeURIComponent(input.id)}/content`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': input.fileType || 'application/octet-stream',
+      'X-Device-Id': getDeviceId(),
+      'X-Visita-Id': input.visitaId,
+      'X-File-Name': encodeURIComponent(input.fileName),
+      'X-File-Type': input.fileType || 'application/octet-stream',
+    },
+    body: input.blob,
+  }, true).catch((err) => {
+    addAppLog('error', 'sync-upload', `Falha ao enviar ficheiro ${input.fileName}`, err);
+    throw err;
+  });
+}
+
+export async function pushDeviceLogs(logs: AppLogEntry[]): Promise<{ accepted: string[] }> {
+  if (logs.length === 0) return { accepted: [] };
+  return request('logs', {
+    method: 'POST',
+    body: JSON.stringify({
+      device_id: getDeviceId(),
+      logs: logs.map((entry) => ({
+        id: entry.id,
+        ts: entry.ts,
+        level: entry.level,
+        scope: entry.scope,
+        message: entry.message,
+        details: entry.details,
+      })),
     }),
   }, true);
 }

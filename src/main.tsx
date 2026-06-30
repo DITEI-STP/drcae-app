@@ -4,6 +4,19 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 import { ThemeProvider } from './hooks/useTheme.tsx';
+import { addAppLog } from './lib/appLogs.ts';
+
+window.addEventListener('error', (event) => {
+  addAppLog('error', 'runtime', event.message, event.error || {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  addAppLog('error', 'runtime', 'Promise rejeitada sem tratamento', event.reason);
+});
 
 registerSW({
   immediate: true,
@@ -13,6 +26,7 @@ registerSW({
   },
   onRegisterError(error) {
     console.warn('[SW] Falha ao registar service worker:', error);
+    addAppLog('warn', 'service-worker', 'Falha ao registar service worker', error);
   },
 });
 

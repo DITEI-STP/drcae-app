@@ -55,8 +55,7 @@ type PendingAnexo = {
   localId: string;
   file: File;
   url: string;
-  data?: string;
-  readError?: string;
+  draftData?: string;
 };
 
 function fileToBase64(file: File): Promise<string> {
@@ -411,7 +410,7 @@ export default function NovaVisita() {
       for (const anx of currentAnexos) {
         if (totalBytes >= MAX_DRAFT_FILES_BYTES) break;
         try {
-          const data = anx.data || await fileToBase64(anx.file);
+          const data = anx.draftData || await fileToBase64(anx.file);
           totalBytes += data.length;
           if (totalBytes <= MAX_DRAFT_FILES_BYTES) {
             fileEntries.push({ name: anx.file.name, type: anx.file.type, data });
@@ -448,7 +447,7 @@ export default function NovaVisita() {
       if (Array.isArray(draft.anexos) && draft.anexos.length > 0) {
         const restored = draft.anexos.map((entry: { name: string; type: string; data: string }) => {
           const file = base64ToFile(entry.data, entry.name, entry.type);
-          return { localId: generateId(), file, url: URL.createObjectURL(file), data: entry.data };
+          return { localId: generateId(), file, url: URL.createObjectURL(file), draftData: entry.data };
         });
         setAnexos(restored);
       }
@@ -464,17 +463,6 @@ export default function NovaVisita() {
       url: URL.createObjectURL(file),
     }));
     setAnexos(prev => [...prev, ...pending]);
-
-    for (const item of pending) {
-      fileToBase64(item.file)
-        .then(data => {
-          setAnexos(prev => prev.map(anx => anx.localId === item.localId ? { ...anx, data, readError: undefined } : anx));
-        })
-        .catch(err => {
-          console.error('[drcae] Falha ao preparar anexo local:', err);
-          setAnexos(prev => prev.map(anx => anx.localId === item.localId ? { ...anx, readError: err?.message || 'Falha ao preparar anexo.' } : anx));
-        });
-    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -495,18 +483,30 @@ export default function NovaVisita() {
 
   const persistAnexosLocal = async (visitaId: string, files: PendingAnexo[], notesValue: string) => {
     for (const anx of files) {
-      const data = anx.data || await fileToBase64(anx.file);
+      const anexoId = generateId();
       const anexo: Anexo = {
-        id: generateId(),
+        id: anexoId,
         visitaId,
         fileName: anx.file.name,
-        fileType: anx.file.type,
-        data,
+        fileType: anx.file.type || 'application/octet-stream',
+        data: '',
         notes: notesValue,
         synced: false
       };
-      await db.anexos.add(anexo);
-      await db.syncQueue.add({ entity: 'anexo', action: 'create', entityId: anexo.id!, payload: anexo, timestamp: Date.now() });
+      try {
+        await db.anexos.add(anexo);
+        await db.attachments.put({
+          id: anexoId,
+          visitaId,
+          data: anx.file,
+          synced: false,
+        });
+        await db.syncQueue.add({ entity: 'anexo', action: 'create', entityId: anexo.id!, payload: anexo, timestamp: Date.now() });
+      } catch (err) {
+        await db.anexos.bulkDelete([anexoId]).catch(() => {});
+        await db.attachments.delete(anexoId).catch(() => {});
+        throw err;
+      }
     }
   };
 
@@ -520,13 +520,7 @@ export default function NovaVisita() {
     try {
     visitaId = generateId();
     offlineCode = await generateOfflineCode();
-    if (anexos.some(anx => !anx.data)) {
-      toast.info('A preparar anexos para guardar localmente...');
-    }
-    anexosToPersist = await Promise.all(anexos.map(async (anx) => ({
-      ...anx,
-      data: anx.data || await fileToBase64(anx.file),
-    })));
+    anexosToPersist = [...anexos];
     notesToPersist = notes;
     const currentRegistrationDate = format(new Date(), 'yyyy-MM-dd');
     const currentRegistrationTime = format(new Date(), 'HH:mm'); // HH:mm — sem segundos para compatibilidade com o backend
@@ -1528,16 +1522,6 @@ export default function NovaVisita() {
                          <button onClick={() => removeAnexo(i)} className="absolute top-2 right-2 bg-slate-900/60 backdrop-blur-sm text-white rounded-full p-1 hover:bg-slate-900/80 transition-colors">
                             <X className="w-3.5 h-3.5" />
                          </button>
-                         {!anx.data && !anx.readError && (
-                           <div className="absolute inset-x-0 bottom-0 bg-slate-950/70 text-white text-[8px] font-bold text-center py-1 uppercase tracking-wider">
-                             A preparar
-                           </div>
-                         )}
-                         {anx.readError && (
-                           <div className="absolute inset-x-0 bottom-0 bg-red-700/85 text-white text-[8px] font-bold text-center py-1 uppercase tracking-wider">
-                             Erro no anexo
-                           </div>
-                         )}
                       </div>
                    ))}
                 </div>

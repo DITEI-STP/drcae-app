@@ -1,8 +1,9 @@
-import { db } from '../db/db';
+import { db, type Anexo } from '../db/db';
 import * as api from './api';
 import { AuthSyncError } from './api';
 import { probeServerReachability } from './serverReachability';
 import { patchSyncState } from './syncState';
+import { addAppLog } from './appLogs';
 
 // String.fromCharCode(...array) falha com arrays > ~65k elementos.
 // Esta versão itera em chunks para suportar ficheiros de qualquer tamanho.
@@ -16,11 +17,40 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function anexoDataToBase64(data: unknown): Promise<string> {
-  if (typeof data === 'string') return data;
-  if (data instanceof ArrayBuffer) return arrayBufferToBase64(data);
-  if (data instanceof Blob) return arrayBufferToBase64(await data.arrayBuffer());
+async function legacyAnexoDataToBase64(anexo: Anexo): Promise<string> {
+  if (typeof anexo.data === 'string' && anexo.data.trim()) return anexo.data;
+  if (anexo.data instanceof ArrayBuffer) return arrayBufferToBase64(anexo.data);
+  if (anexo.data instanceof Blob) return arrayBufferToBase64(await anexo.data.arrayBuffer());
   throw new Error('Anexo sem dados locais válidos.');
+}
+
+async function ensureAnexoUploadReference(anexo: Anexo): Promise<Anexo> {
+  if (anexo.file_ref) return anexo;
+  if (anexo.id) {
+    const attachment = await db.attachments.get(anexo.id);
+    if (attachment?.data) {
+      const upload = await api.uploadSyncAttachment({
+        id: anexo.id,
+        visitaId: anexo.visitaId,
+        fileName: anexo.fileName,
+        fileType: anexo.fileType || 'application/octet-stream',
+        blob: attachment.data,
+      });
+      const updates = {
+        file_ref: upload.file_ref,
+        uploadSize: upload.size,
+        url: upload.url || anexo.url,
+        data: '',
+      };
+      await db.anexos.update(anexo.id, updates);
+      return { ...anexo, ...updates };
+    }
+  }
+
+  return {
+    ...anexo,
+    data: await legacyAnexoDataToBase64(anexo),
+  };
 }
 
 // Perfil de sincronização atribuído pelo servidor (lido do localStorage)
@@ -183,12 +213,16 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   const localErrors: string[] = [];
   for (const a of unsyncedAnexos) {
     try {
+      const prepared = await ensureAnexoUploadReference(a);
       anexoPayload.push({
-        ...a,
-        data: await anexoDataToBase64(a.data),
+        ...prepared,
+        file_ref: prepared.file_ref,
+        data: prepared.file_ref ? undefined : prepared.data,
       });
     } catch (err) {
-      localErrors.push(`Anexo ${a.id}: ${(err as Error).message}`);
+      const message = `Anexo ${a.id}: ${(err as Error).message}`;
+      localErrors.push(message);
+      addAppLog('error', 'sync', message, err);
     }
   }
 
@@ -212,6 +246,7 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
       return { pushed: 0, errors: [], needsAuth: true };
     }
     patchSyncState({ phase: 'error', errors: [(err as Error).message] });
+    addAppLog('error', 'sync', 'Falha no push para o servidor', err);
     throw err;
   }
 
@@ -234,6 +269,9 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   const accepted = response.accepted?.length || 0;
   const allErrors = [...localErrors, ...(response.errors || [])];
   const rejected = allErrors.length;
+  if (allErrors.length > 0) {
+    addAppLog('error', 'sync', 'Servidor devolveu erros de sincronização', allErrors);
+  }
   patchSyncState({ pushDone: accepted, pushErrors: rejected });
 
   return {
@@ -283,6 +321,7 @@ export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: n
           return { pulled: totalPulled, pushed: totalPushed, errors: allErrors, needsAuth: true };
         }
         patchSyncState({ phase: 'error', errors: [(err as Error).message], endedAt: Date.now() });
+        addAppLog('error', 'sync', 'Falha no pull do servidor', err);
         throw err;
       }
       totalPulled += pulled;
