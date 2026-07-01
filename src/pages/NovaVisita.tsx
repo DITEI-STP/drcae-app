@@ -21,6 +21,7 @@ import { cn } from '../lib/utils';
 import { toast } from '../lib/notifications';
 import { generateOfflineCode } from '../lib/offlineCode';
 import InfractionDetailDrawer from '../components/InfractionDetailDrawer';
+import { recidivismLabel } from '../lib/recidivism';
 import CameraCapture from '../components/CameraCapture';
 import SpeechInputButton from '../components/SpeechInputButton';
 import { triggerFullSyncIfReachable } from '../lib/sync';
@@ -170,6 +171,7 @@ export default function NovaVisita() {
   const [recomendacoes, setRecomendacoes] = useState<string[]>([]);
   const [recomendacoesHistoricas, setRecomendacoesHistoricas] = useState<RecomendacaoHistorica[]>([]);
   const [historicoVisitas, setHistoricoVisitas] = useState<{id: string, date: string, technicians: string[], recomendacoes: string[]}[]>([]);
+  const [infracaoCountByType, setInfracaoCountByType] = useState<Map<string, number>>(new Map());
   const [customRecommendation, setCustomRecommendation] = useState('');
   const [searchInfracao, setSearchInfracao] = useState('');
   const [showCamera, setShowCamera] = useState(false);
@@ -220,6 +222,19 @@ export default function NovaVisita() {
         return (left.firma.name || '').localeCompare(right.firma.name || '', 'pt');
       });
   }, [firmas, location, search]);
+
+  const groupedHistoricoRecomendacoes = useMemo(() => {
+    const byText = new Map<string, { text: string; origins: { visitaId: string; date: string; technicians: string[] }[] }>();
+    for (const v of historicoVisitas) {
+      for (const rec of v.recomendacoes) {
+        const origin = { visitaId: v.id, date: v.date, technicians: v.technicians };
+        const entry = byText.get(rec);
+        if (entry) entry.origins.push(origin);
+        else byText.set(rec, { text: rec, origins: [origin] });
+      }
+    }
+    return Array.from(byText.values());
+  }, [historicoVisitas]);
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -346,11 +361,16 @@ export default function NovaVisita() {
     });
   }, [firmaId, firmas]);
 
-  // Carregar recomendações históricas quando firma é selecionada
+  // Carregar recomendações históricas e contagem de infrações por tipo quando firma é selecionada
   useEffect(() => {
-    if (!firmaId) { setHistoricoVisitas([]); return; }
+    if (!firmaId) {
+      setHistoricoVisitas([]);
+      setInfracaoCountByType(new Map());
+      return;
+    }
     (async () => {
       const prev = await db.visitas.where('firmaId').equals(firmaId).toArray();
+
       const withRecs = prev.filter(v => v.recomendacoes && v.recomendacoes.length > 0);
       setHistoricoVisitas(withRecs.map(v => ({
         id: v.id!,
@@ -358,6 +378,16 @@ export default function NovaVisita() {
         technicians: v.technicians,
         recomendacoes: v.recomendacoes || [],
       })));
+
+      const counts = new Map<string, number>();
+      for (const v of prev) {
+        if (!v.id) continue;
+        const infs = await db.infracoes.where('visitaId').equals(v.id).toArray();
+        for (const inf of infs) {
+          counts.set(inf.type, (counts.get(inf.type) || 0) + 1);
+        }
+      }
+      setInfracaoCountByType(counts);
     })();
   }, [firmaId]);
 
@@ -1175,6 +1205,7 @@ export default function NovaVisita() {
                      inf.severity === 'Crítica' ? 'bg-red-600 text-white' :
                      inf.severity === 'Alta' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' :
                      'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300';
+                   const recidivism = recidivismLabel((infracaoCountByType.get(inf.type) || 0) + 1);
                    return (
                      <div
                        key={inf.type}
@@ -1202,6 +1233,9 @@ export default function NovaVisita() {
                        </span>
                        <span className={cn('text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0', severityColor)}>
                          {inf.severity}
+                       </span>
+                       <span className={cn('text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0', recidivism.className)}>
+                         {recidivism.label}
                        </span>
                        <button
                          onClick={() => setSelectedInfraction(inf)}
@@ -1271,47 +1305,62 @@ export default function NovaVisita() {
                 </p>
              </div>
 
-             {/* Recomendações Históricas do mesmo operador */}
-             {historicoVisitas.length > 0 && (
+             {/* Recomendações Históricas do mesmo operador (agrupadas por texto único) */}
+             {groupedHistoricoRecomendacoes.length > 0 && (
                <div className="space-y-3">
                  <div className="flex items-center gap-2">
                    <History className="w-4 h-4 text-indigo-500" />
                    <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
-                     Recomendações Anteriores neste Operador ({historicoVisitas.reduce((s, v) => s + v.recomendacoes.length, 0)})
+                     Recomendações Anteriores neste Operador ({groupedHistoricoRecomendacoes.length})
                    </label>
                  </div>
                  <div className="space-y-3">
-                   {historicoVisitas.map(v => v.recomendacoes.map((rec, ri) => {
-                     const existingEntry = recomendacoesHistoricas.find(
-                       r => r.visitaOrigemId === v.id && r.text === rec
+                   {groupedHistoricoRecomendacoes.map(group => {
+                     const entries = group.origins.map(o =>
+                       recomendacoesHistoricas.find(r => r.visitaOrigemId === o.visitaId && r.text === group.text)
                      );
+                     const allAcatada = entries.length > 0 && entries.every(e => e?.atendida === true);
+                     const allNaoAcatada = entries.length > 0 && entries.every(e => e?.atendida === false);
+
+                     const applyToAllOrigins = (atendida: boolean) => {
+                       setRecomendacoesHistoricas(prev => {
+                         let next = [...prev];
+                         for (const origin of group.origins) {
+                           const idx = next.findIndex(r => r.visitaOrigemId === origin.visitaId && r.text === group.text);
+                           if (idx >= 0) {
+                             const current = next[idx];
+                             next[idx] = { ...current, atendida: current.atendida === atendida ? null : atendida };
+                           } else {
+                             next.push({ text: group.text, visitaOrigemId: origin.visitaId, dataOrigem: origin.date, equipaOrigem: origin.technicians, atendida });
+                           }
+                         }
+                         return next;
+                       });
+                     };
+
+                     const mostRecent = group.origins[group.origins.length - 1];
+
                      return (
-                       <div key={`${v.id}-${ri}`} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
-                         <p className="text-xs font-medium text-slate-700 dark:text-slate-200 leading-snug">{rec}</p>
+                       <div key={group.text} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
+                         <p className="text-xs font-medium text-slate-700 dark:text-slate-200 leading-snug">{group.text}</p>
                          <div className="flex items-center justify-between">
                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
-                             <span className="font-mono">{v.date}</span>
+                             <span className="font-mono">{mostRecent.date}</span>
                              <span>·</span>
-                             <span>{v.technicians.slice(0, 2).join(', ')}{v.technicians.length > 2 ? ` +${v.technicians.length - 2}` : ''}</span>
+                             <span>{mostRecent.technicians.slice(0, 2).join(', ')}{mostRecent.technicians.length > 2 ? ` +${mostRecent.technicians.length - 2}` : ''}</span>
+                             {group.origins.length > 1 && (
+                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold">
+                                 ×{group.origins.length}
+                               </span>
+                             )}
                            </div>
                            <div className="flex items-center gap-1">
                              <button
                                type="button"
-                               onClick={() => {
-                                 setRecomendacoesHistoricas(prev => {
-                                   const existing = prev.find(r => r.visitaOrigemId === v.id && r.text === rec);
-                                   if (existing) {
-                                     return prev.map(r => r.visitaOrigemId === v.id && r.text === rec
-                                       ? { ...r, atendida: r.atendida === true ? null : true }
-                                       : r
-                                     );
-                                   }
-                                   return [...prev, { text: rec, visitaOrigemId: v.id, dataOrigem: v.date, equipaOrigem: v.technicians, atendida: true }];
-                                 });
-                               }}
+                               onClick={() => applyToAllOrigins(true)}
                                className={cn(
                                  'flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors',
-                                 existingEntry?.atendida === true
+                                 allAcatada
                                    ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 text-emerald-800 dark:text-emerald-300'
                                    : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-emerald-300 hover:text-emerald-700'
                                )}
@@ -1321,21 +1370,10 @@ export default function NovaVisita() {
                              </button>
                              <button
                                type="button"
-                               onClick={() => {
-                                 setRecomendacoesHistoricas(prev => {
-                                   const existing = prev.find(r => r.visitaOrigemId === v.id && r.text === rec);
-                                   if (existing) {
-                                     return prev.map(r => r.visitaOrigemId === v.id && r.text === rec
-                                       ? { ...r, atendida: r.atendida === false ? null : false }
-                                       : r
-                                     );
-                                   }
-                                   return [...prev, { text: rec, visitaOrigemId: v.id, dataOrigem: v.date, equipaOrigem: v.technicians, atendida: false }];
-                                 });
-                               }}
+                               onClick={() => applyToAllOrigins(false)}
                                className={cn(
                                  'flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors',
-                                 existingEntry?.atendida === false
+                                 allNaoAcatada
                                    ? 'bg-red-100 dark:bg-red-900/30 border-red-300 text-red-800 dark:text-red-300'
                                    : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-red-300 hover:text-red-700'
                                )}
@@ -1347,7 +1385,7 @@ export default function NovaVisita() {
                          </div>
                        </div>
                      );
-                   }))}
+                   })}
                  </div>
                </div>
              )}

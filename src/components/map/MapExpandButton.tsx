@@ -2,7 +2,7 @@ import { Maximize2 } from 'lucide-react';
 
 export function MapExpandButton({ onExpand }: { onExpand: () => void }) {
     return (
-        <div className="absolute bottom-3 right-3 z-[999] pointer-events-auto">
+        <div className="absolute top-20 left-2.5 z-[999] pointer-events-auto">
             <button
                 onClick={onExpand}
                 title="Expandir mapa"

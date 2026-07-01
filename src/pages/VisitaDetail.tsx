@@ -15,6 +15,7 @@ import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { RecomendacaoHistorica, ProdutoPreco } from '../db/db';
+import { computeRecidivism, recidivismLabel } from '../lib/recidivism';
 
 // Leaflet icon fix
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -87,11 +88,12 @@ const SEV_CONFIG: Record<string, { label: string; badge: string; dot: string; pa
   },
 };
 
-function InfractionCard({ type, severity, minimum_penalty, maximum_penalty }: {
+function InfractionCard({ type, severity, minimum_penalty, maximum_penalty, recurrence }: {
   type: string;
   severity: string;
   minimum_penalty?: number | null;
   maximum_penalty?: number | null;
+  recurrence?: number;
 }) {
   const [open, setOpen] = useState(false);
   const sev = SEV_CONFIG[severity] ?? {
@@ -102,6 +104,7 @@ function InfractionCard({ type, severity, minimum_penalty, maximum_penalty }: {
     panelBorder: 'border-slate-100 dark:border-slate-800',
   };
   const hasPenalty = minimum_penalty != null || maximum_penalty != null;
+  const recBadge = recurrence ? recidivismLabel(recurrence) : null;
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -116,6 +119,11 @@ function InfractionCard({ type, severity, minimum_penalty, maximum_penalty }: {
           <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase', sev.badge)}>
             {sev.label}
           </span>
+          {recBadge && (
+            <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase', recBadge.className)}>
+              {recBadge.label}
+            </span>
+          )}
           {hasPenalty && (
             <ChevronDown size={13} className={cn('text-slate-400 transition-transform duration-200', open && 'rotate-180')} />
           )}
@@ -252,6 +260,20 @@ export default function VisitaDetail() {
   const firma = useLiveQuery(() => visita ? db.firmas.get(visita.firmaId) : undefined, [visita]);
   const infracoes = useLiveQuery(() => db.infracoes.where('visitaId').equals(id!).toArray(), [id]);
   const anexos = useLiveQuery(() => db.anexos.where('visitaId').equals(id!).toArray(), [id]);
+
+  // Histórico de infrações da firma, usado para classificar cada infração
+  // desta visita em incidente / reincidente / multi-reincidente.
+  const recidivismByInfracaoId = useLiveQuery(async () => {
+    if (!visita?.firmaId) return new Map<string, number>();
+    const firmaVisitas = await db.visitas.where('firmaId').equals(visita.firmaId).toArray();
+    const sortKeyByVisitaId = new Map(
+      firmaVisitas.map(v => [v.id!, v.createdAt ?? Date.parse(`${v.date}T${v.time || '00:00'}`) ?? 0])
+    );
+    const visitaIds = firmaVisitas.map(v => v.id!).filter(Boolean);
+    if (!visitaIds.length) return new Map<string, number>();
+    const firmaInfracoes = await db.infracoes.where('visitaId').anyOf(visitaIds).toArray();
+    return computeRecidivism(firmaInfracoes, sortKeyByVisitaId);
+  }, [visita?.firmaId]);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editNotes, setEditNotes] = useState('');
@@ -527,6 +549,7 @@ export default function VisitaDetail() {
                     severity={inf.severity}
                     minimum_penalty={inf.minimum_penalty}
                     maximum_penalty={inf.maximum_penalty}
+                    recurrence={inf.id ? recidivismByInfracaoId?.get(inf.id) : undefined}
                   />
                 </React.Fragment>
               ))}
