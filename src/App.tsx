@@ -41,7 +41,6 @@ import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSynced, type AppLogEntry } from './lib/appLogs';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
-const APP_LOGO_LOGIN_SRC = '/app/img/logo_login.png';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const { theme, setTheme } = useTheme();
@@ -1143,7 +1142,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       )}
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex flex-col items-center justify-center mb-6">
-          <img src={APP_LOGO_LOGIN_SRC} alt="DRCAE" className="h-24 w-24 object-contain" />
+          <img src={APP_LOGO_SRC} alt="DRCAE" className="h-24 w-24 object-contain" />
         </div>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">

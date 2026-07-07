@@ -441,6 +441,18 @@ export async function getDeviceChatMessages(limit = 80): Promise<{ messages: any
   return request(`device/chat/messages?${params.toString()}`);
 }
 
+export async function getDeviceChatUnreadCount(): Promise<{ count: number }> {
+  const params = new URLSearchParams({ device_id: getDeviceId() });
+  return request(`device/chat/unread?${params.toString()}`);
+}
+
+export async function markDeviceChatRead(): Promise<{ success: boolean }> {
+  return request('device/chat/read', {
+    method: 'POST',
+    body: JSON.stringify({ device_id: getDeviceId() }),
+  });
+}
+
 export async function sendDeviceChatMessage(input: {
   message_type?: 'text' | 'audio';
   text_body?: string;

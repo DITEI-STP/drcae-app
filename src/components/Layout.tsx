@@ -11,6 +11,7 @@ import { checkServerReachable } from '../lib/serverReachability';
 import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
 import { toast } from '../lib/notifications';
+import { useChatUnread } from '../lib/useChatUnread';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
@@ -68,6 +69,7 @@ export default function Layout({ onLogout }: LayoutProps) {
   }, []) || 0;
 
   const navigate = useNavigate();
+  const unreadChatCount = useChatUnread(isOnline);
 
   const syncRunningRef = useRef(false);
 
@@ -372,7 +374,7 @@ export default function Layout({ onLogout }: LayoutProps) {
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) => cn(
-                'flex flex-col items-center justify-center p-3 rounded-xl transition-colors',
+                'relative flex flex-col items-center justify-center p-3 rounded-xl transition-colors',
                 isActive
                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -380,6 +382,11 @@ export default function Layout({ onLogout }: LayoutProps) {
             >
               <item.icon className="w-6 h-6 mb-1" />
               <span className="text-[10px] uppercase tracking-wide">{item.label}</span>
+              {item.to === '/central' && unreadChatCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[9px] font-bold leading-none">
+                  {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -416,7 +423,7 @@ export default function Layout({ onLogout }: LayoutProps) {
           <button
             onClick={() => setShowMoreMenu(v => !v)}
             className={cn(
-              'flex flex-col items-center py-3 px-3 w-full transition-colors',
+              'relative flex flex-col items-center py-3 px-3 w-full transition-colors',
               showMoreMenu || overflowNavItems.some(item => location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to)))
                 ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
@@ -424,6 +431,11 @@ export default function Layout({ onLogout }: LayoutProps) {
           >
             <LayoutGrid className="w-6 h-6 mb-1" />
             <span className="text-[10px] uppercase tracking-wide">Mais</span>
+            {unreadChatCount > 0 && (
+              <span className="absolute top-1 right-3 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[9px] font-bold leading-none">
+                {unreadChatCount > 9 ? '9+' : unreadChatCount}
+              </span>
+            )}
           </button>
 
           {/* Painel de overflow */}
@@ -436,14 +448,21 @@ export default function Layout({ onLogout }: LayoutProps) {
                   end={item.to === '/'}
                   onClick={() => setShowMoreMenu(false)}
                   className={({ isActive }) => cn(
-                    'flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
+                    'flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium transition-colors',
                     isActive
                       ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                   )}
                 >
-                  <item.icon className="w-5 h-5 shrink-0" />
-                  {item.label}
+                  <span className="flex items-center gap-3">
+                    <item.icon className="w-5 h-5 shrink-0" />
+                    {item.label}
+                  </span>
+                  {item.to === '/central' && unreadChatCount > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold leading-none">
+                      {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>

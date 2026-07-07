@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Headphones, Mic, Send, Square, RadioTower, RefreshCw } from 'lucide-react';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
+import { playNotificationSound } from '../lib/notificationSound';
 
 type ChatMessage = {
   uid: string;
@@ -38,6 +39,9 @@ export default function Central() {
 
   useEffect(() => {
     void loadMessages();
+    void api.markDeviceChatRead()
+      .then(() => window.dispatchEvent(new CustomEvent('drcae:chat-read')))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -45,6 +49,10 @@ export default function Central() {
       const detail = (event as CustomEvent).detail;
       if (detail?.type === 'chat.message.created') {
         void loadMessages();
+        playNotificationSound();
+        void api.markDeviceChatRead()
+          .then(() => window.dispatchEvent(new CustomEvent('drcae:chat-read')))
+          .catch(() => undefined);
       }
     };
     window.addEventListener('drcae:realtime-sync', handler);

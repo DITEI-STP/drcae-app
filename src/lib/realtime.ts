@@ -86,6 +86,9 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
     let centrifuge: Centrifuge | null = null;
 
     const scheduleSync = (event?: RealtimeEvent) => {
+      if (event) {
+        window.dispatchEvent(new CustomEvent('drcae:realtime-sync', { detail: event }));
+      }
       if (event?.source === 'app' && event.deviceId === api.getDeviceId()) return;
       if (event?.type === 'device.invalidated') {
         window.dispatchEvent(new Event('auth-expired'));
