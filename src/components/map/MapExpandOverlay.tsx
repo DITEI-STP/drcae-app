@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Minimize2 } from 'lucide-react';
 
 export type ExpandMode = 'normal' | 'full';
 
@@ -9,7 +8,7 @@ interface MapExpandOverlayProps {
     onClose: () => void;
     onModeChange: (mode: ExpandMode) => void;
     title?: string;
-    children: React.ReactNode;
+    children: React.ReactNode | ((collapse: () => void) => React.ReactNode);
 }
 
 function Overlay({ mode, onClose, onModeChange, title, children }: MapExpandOverlayProps) {
@@ -43,20 +42,12 @@ function Overlay({ mode, onClose, onModeChange, title, children }: MapExpandOver
                 transition: `opacity ${visible ? '0.25s' : '0.2s'} ease-out, transform ${visible ? '0.25s' : '0.2s'} ease-out`,
             }}
         >
-            <div className="h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 flex items-center justify-between px-4 gap-3 shrink-0 shadow-sm z-10">
-                <button
-                    onClick={handleClose}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                    <Minimize2 size={14} />
-                    Fechar
-                </button>
-
+            <div className="h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 flex items-center px-4 gap-3 shrink-0 shadow-sm z-10">
                 {title && (
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate select-none">{title}</span>
                 )}
 
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1 shrink-0 ml-auto">
                     <button
                         onClick={() => onModeChange('normal')}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
@@ -77,7 +68,7 @@ function Overlay({ mode, onClose, onModeChange, title, children }: MapExpandOver
             </div>
 
             <div className="flex-1 relative overflow-hidden">
-                {children}
+                {typeof children === 'function' ? children(handleClose) : children}
             </div>
         </div>
     );
