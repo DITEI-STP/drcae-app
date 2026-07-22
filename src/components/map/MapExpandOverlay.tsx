@@ -1,22 +1,56 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 export type ExpandMode = 'normal' | 'full';
+
+export interface MapOriginRect {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+}
 
 interface MapExpandOverlayProps {
     mode: ExpandMode;
     onClose: () => void;
     onModeChange: (mode: ExpandMode) => void;
     title?: string;
+    /** Posição/tamanho do cartão de mapa de origem, usada para animar o "crescimento" até ao ecrã cheio e o "regresso" ao encolher. */
+    originRect?: MapOriginRect | null;
     children: React.ReactNode | ((collapse: () => void) => React.ReactNode);
 }
 
-function Overlay({ mode, onClose, onModeChange, title, children }: MapExpandOverlayProps) {
-    const [visible, setVisible] = useState(false);
+const TRANSITION_MS = 320;
+
+function originTransform(rect: MapOriginRect | null | undefined): string {
+    if (!rect || typeof window === 'undefined' || !window.innerWidth || !window.innerHeight) {
+        return 'translate(0px, 0px) scale(1, 1)';
+    }
+    const scaleX = rect.width / window.innerWidth;
+    const scaleY = rect.height / window.innerHeight;
+    return `translate(${rect.left}px, ${rect.top}px) scale(${scaleX}, ${scaleY})`;
+}
+
+function Overlay({ mode, onClose, onModeChange, title, originRect, children }: MapExpandOverlayProps) {
+    const [open, setOpen] = useState(false);
+    const shrunkTransform = useMemo(() => originTransform(originRect), [originRect]);
+    const nodeRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const id = requestAnimationFrame(() => setVisible(true));
-        return () => cancelAnimationFrame(id);
+        // Força o browser a pintar o estado inicial (encolhido, na posição de
+        // origem) antes de mudar para o estado aberto — sem este reflow
+        // síncrono as duas mudanças de "transform" podem ser fundidas no
+        // mesmo frame e a transição de zoom não chega a ser vista (só o
+        // fade do "opacity" fica percetível).
+        nodeRef.current?.getBoundingClientRect();
+        let raf2 = 0;
+        const raf1 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(() => setOpen(true));
+        });
+        return () => {
+            cancelAnimationFrame(raf1);
+            cancelAnimationFrame(raf2);
+        };
     }, []);
 
     useEffect(() => {
@@ -27,19 +61,20 @@ function Overlay({ mode, onClose, onModeChange, title, children }: MapExpandOver
     }, []);
 
     const handleClose = () => {
-        setVisible(false);
-        setTimeout(onClose, 200);
+        setOpen(false);
+        setTimeout(onClose, TRANSITION_MS);
     };
-
-    const positionClass = mode === 'full' ? 'inset-0' : 'inset-0';
 
     return (
         <div
-            className={`fixed ${positionClass} z-[9990] flex flex-col`}
+            ref={nodeRef}
+            className="fixed inset-0 z-[9990] flex flex-col"
             style={{
-                opacity: visible ? 1 : 0,
-                transform: visible ? 'scale(1)' : 'scale(0.98)',
-                transition: `opacity ${visible ? '0.25s' : '0.2s'} ease-out, transform ${visible ? '0.25s' : '0.2s'} ease-out`,
+                transform: open ? 'translate(0px, 0px) scale(1, 1)' : shrunkTransform,
+                transformOrigin: 'top left',
+                opacity: open ? 1 : 0.6,
+                transition: `transform ${TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${TRANSITION_MS}ms ease-out`,
+                willChange: 'transform, opacity',
             }}
         >
             <div className="h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 flex items-center px-4 gap-3 shrink-0 shadow-sm z-10">

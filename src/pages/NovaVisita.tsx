@@ -15,7 +15,7 @@ L.Icon.Default.mergeOptions({
 });
 import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, MapPin, Camera, Video, FolderOpen, X, Check, Map, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
+import { ArrowLeft, MapPin, Camera, Video, FolderOpen, X, Check, Map as MapIcon, CheckCircle, Search, Plus, Users, AlertTriangle, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { toast } from '../lib/notifications';
@@ -1726,7 +1726,7 @@ export default function NovaVisita() {
              {/* Georreferenciação da Atividade (Mapa) */}
              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                   <Map className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                   <MapIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                    Georreferenciação Localizada (Ata de Visita)
                 </h4>
                 {location ? (

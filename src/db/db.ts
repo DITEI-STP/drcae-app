@@ -153,6 +153,10 @@ class EncryptedWhereClause {
   equals(value: any) {
     return new EncryptedCollection(this.whereClause.equals(value), this.decryptFn);
   }
+
+  anyOf(values: any[]) {
+    return new EncryptedCollection(this.whereClause.anyOf(values), this.decryptFn);
+  }
 }
 
 class EncryptedTable {

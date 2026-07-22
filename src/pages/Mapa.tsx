@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, LayoutList, LayoutGrid, WifiOff, Crosshair } from 'lucide-react';
@@ -12,7 +12,7 @@ import 'leaflet/dist/leaflet.css';
 import { DistrictLayer } from '../components/map/DistrictLayer';
 import { MapLayerSwitcher, MAP_TILE_LAYERS, MAP_ATTRIBUTIONS, type MapProvider } from '../components/map/MapLayerSwitcher';
 import { MapExpandButton } from '../components/map/MapExpandButton';
-import { MapExpandOverlay, type ExpandMode } from '../components/map/MapExpandOverlay';
+import { MapExpandOverlay, type ExpandMode, type MapOriginRect } from '../components/map/MapExpandOverlay';
 
 const DISTRICT_COORDS: Record<string, { lat: number; lng: number }> = {
   'Água Grande': { lat: 0.336, lng: 6.730 },
@@ -77,6 +77,14 @@ export default function Mapa() {
   const [visibleCount, setVisibleCount] = useState(15);
   const [mapProvider, setMapProvider] = useState<MapProvider>('osm');
   const [mapExpandMode, setMapExpandMode] = useState<ExpandMode | null>(null);
+  const [mapOriginRect, setMapOriginRect] = useState<MapOriginRect | null>(null);
+  const mapCardRef = useRef<HTMLDivElement>(null);
+
+  const expandMap = () => {
+    const rect = mapCardRef.current?.getBoundingClientRect();
+    setMapOriginRect(rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : null);
+    setMapExpandMode('normal');
+  };
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() =>
     (localStorage.getItem('drcae_view_mapa') as 'list' | 'grid') || 'list'
   );
@@ -549,7 +557,7 @@ export default function Mapa() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                {/* Map View */}
                <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden h-[320px] md:h-[480px] relative">
+                  <div ref={mapCardRef} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden h-[320px] md:h-[480px] relative">
                      <MapContainer
                         center={locInfo.lat !== 0 ? [locInfo.lat, locInfo.lng] : [0.336, 6.730]}
                         zoom={locInfo.lat !== 0 ? 16 : 10}
@@ -577,7 +585,7 @@ export default function Mapa() {
                               <Popup><div className="text-xs font-sans"><p className="font-bold">{selectedFirma.name}</p><p className="text-slate-500">{locInfo.hasExactPoint ? selectedFirma.district : 'Referência por distrito'}</p></div></Popup>
                            </CircleMarker>
                         )}
-                        <MapExpandButton onExpand={() => setMapExpandMode('normal')} />
+                        <MapExpandButton onExpand={expandMap} />
                      </MapContainer>
                      <MapLayerSwitcher value={mapProvider} onChange={setMapProvider} />
                      <div className="absolute left-2 bottom-2 z-[999] rounded-lg bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 shadow-sm">
@@ -585,7 +593,7 @@ export default function Mapa() {
                      </div>
                   </div>
                   {mapExpandMode && (
-                     <MapExpandOverlay mode={mapExpandMode} onClose={() => setMapExpandMode(null)} onModeChange={setMapExpandMode} title="Mapa de Operadores">
+                     <MapExpandOverlay mode={mapExpandMode} onClose={() => setMapExpandMode(null)} onModeChange={setMapExpandMode} title="Mapa de Operadores" originRect={mapOriginRect}>
                         {(collapse) => (
                            <div className="h-full w-full relative">
                               <MapContainer center={locInfo.lat !== 0 ? [locInfo.lat, locInfo.lng] : [0.336, 6.730]} zoom={locInfo.lat !== 0 ? 16 : 10} scrollWheelZoom zoomControl={false} className="h-full w-full absolute inset-0">
