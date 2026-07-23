@@ -203,7 +203,7 @@ export default function PairingScreen({ onRegistered }: Props) {
         device_code: result.device_code,
         endpoint,
         paired_at: new Date().toISOString(),
-        alias: assignedAlias || undefined,
+        alias: result.alias || assignedAlias || undefined,
       });
       let autoApproved = false;
       try {

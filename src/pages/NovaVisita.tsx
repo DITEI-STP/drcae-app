@@ -180,7 +180,7 @@ export default function NovaVisita() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Produtos de Cesta Básica
-  const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, grossPrice: number | null, retailPrice: number | null}[]>([]);
+  const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, description?: string | null, grossPrice: number | null, retailPrice: number | null}[]>([]);
   const [supplyStatus, setSupplyStatus] = useState<'idle'|'loading'|'active'|'none'>('idle');
   const [produtosPrices, setProdutosPrices] = useState<Record<number, {gross: string, retail: string, grossEval?: 'conforme' | 'nao_conforme', retailEval?: 'conforme' | 'nao_conforme'}>>({});
 
@@ -607,6 +607,7 @@ export default function NovaVisita() {
       id: visitaId,
       offlineCode,
       firmaId,
+      representante,
       date: currentRegistrationDate,
       time: currentRegistrationTime,
       technicians,
@@ -937,14 +938,19 @@ export default function NovaVisita() {
               {firmaId && (
                 <div className="space-y-4 shrink-0 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom duration-300">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Representante no Local</label>
-                    <input 
-                      type="text" 
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">Representante no Local *</label>
+                    <input
+                      type="text"
                       value={representante}
                       onChange={e => setRepresentante(e.target.value)}
                       placeholder="Nome do representante..."
                       className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm font-semibold text-slate-800 dark:text-slate-100 transition-all outline-none"
                     />
+                    {!representante.trim() && (
+                      <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-xl text-center text-xs text-red-700 dark:text-red-400 font-semibold">
+                        Atenção: O representante no local é obrigatório para prosseguir!
+                      </div>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -1698,7 +1704,12 @@ export default function NovaVisita() {
               const retailConform = retailNum != null && produto.retailPrice != null ? retailNum <= produto.retailPrice : null;
               return (
                 <div key={produto.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
-                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{produto.name}</p>
+                  <div>
+                    <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{produto.name}</p>
+                    {produto.description && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{produto.description}</p>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Preço Grosso (STN)</label>
@@ -2010,7 +2021,7 @@ export default function NovaVisita() {
             <button
                onClick={handleNext}
                disabled={
-                  (step === 1 && (!firmaId || !atividadeEconomica)) ||
+                  (step === 1 && (!firmaId || !atividadeEconomica || !representante.trim())) ||
                   (step === 2 && technicians.length === 0)
                }
                className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 disabled:opacity-50 disabled:bg-slate-400 dark:disabled:bg-slate-800 hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200/50 dark:shadow-none"

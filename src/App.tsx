@@ -1142,9 +1142,23 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         </button>
       )}
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex flex-col items-center justify-center mb-6">
+        <div className="flex flex-col items-center justify-center mb-4">
           <img src={APP_LOGO_SRC} alt="DRCAE" className="h-24 w-24 object-contain" />
         </div>
+
+        {/* Identidade do dispositivo — sempre visível para confirmar qual terminal está a ser usado */}
+        <div className="mb-6 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center gap-2 text-center">
+          <Smartphone className="w-4 h-4 text-blue-500 shrink-0" />
+          <div>
+            <p className="font-bold text-blue-700 text-sm leading-tight">
+              {pairedDevice?.alias || 'Dispositivo não identificado'}
+            </p>
+            <p className="text-[11px] font-mono text-blue-400 leading-tight">
+              {pairedDevice?.device_code || '—'}
+            </p>
+          </div>
+        </div>
+
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">
           {isServerReachable() ? 'Conectado ao Servidor' : 'Modo Offline - Acesso Criptografado'}
@@ -1192,14 +1206,6 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
             {loading ? 'A processar...' : 'Iniciar Sessão'}
           </button>
         </form>
-
-        {pairedDevice?.device_code && (
-          <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
-            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-1">Dispositivo</p>
-            <p className="font-bold text-slate-700 text-sm">{pairedDevice.alias || 'Sem alias'}</p>
-            <p className="text-xs font-mono text-slate-400">{pairedDevice.device_code}</p>
-          </div>
-        )}
       </div>
     </div>
   );

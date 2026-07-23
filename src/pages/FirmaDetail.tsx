@@ -358,11 +358,11 @@ export default function FirmaDetail() {
                 {infracoes.map((inf, i) => (
                    <li key={i} className="text-sm border-b border-red-100 dark:border-red-900/20 pb-2 last:border-0 last:pb-0">
                       <div className="flex justify-between items-start">
-                         <p className="font-bold text-slate-800 dark:text-slate-205 flex-1 pr-2 leading-tight">{inf.type}</p>
+                         <p className="font-bold text-slate-800 dark:text-slate-100 flex-1 pr-2 leading-tight">{inf.type}</p>
                          <span className={cn(
                             "text-[10px] uppercase font-bold px-2 py-1 rounded shrink-0 leading-none",
-                            inf.severity === 'Baixa' ? "bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-450" :
-                            inf.severity === 'Alta' ? "bg-orange-100 text-orange-800 dark:bg-orange-950/30 dark:text-orange-455" : "bg-red-600 text-white dark:bg-red-700"
+                            inf.severity === 'Baixa' ? "bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300" :
+                            inf.severity === 'Alta' ? "bg-orange-100 text-orange-800 dark:bg-orange-950/30 dark:text-orange-300" : "bg-red-600 text-white dark:bg-red-700"
                          )}>{inf.severity}</span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Data: {inf.date}</p>
@@ -385,8 +385,8 @@ export default function FirmaDetail() {
                    <li key={i} className="text-xs bg-white dark:bg-slate-900 p-3 rounded-xl border border-amber-100/70 dark:border-amber-900/30 text-slate-700 dark:text-slate-300 leading-relaxed shadow-3xs flex gap-2">
                       <span className="text-amber-500 font-extrabold">•</span>
                       <div className="flex-1">
-                         <p className="font-semibold text-slate-800 dark:text-slate-205">{rec.text}</p>
-                         <p className="text-[10px] text-slate-400 dark:text-slate-550 mt-1 font-mono">
+                         <p className="font-semibold text-slate-800 dark:text-slate-100">{rec.text}</p>
+                         <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-mono">
                             Emitida em: {rec.dataOrigem} por {rec.equipaOrigem.join(', ')}
                          </p>
                       </div>

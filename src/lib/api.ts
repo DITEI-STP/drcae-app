@@ -322,7 +322,7 @@ export async function getAssets(): Promise<any> {
 }
 
 // 8. Produtos de Cesta Básica do operador
-export async function getOperatorSupply(operatorUid: string): Promise<{ bookStatus: string; products: { id: number; name: string; grossPrice: number | null; retailPrice: number | null }[] }> {
+export async function getOperatorSupply(operatorUid: string): Promise<{ bookStatus: string; products: { id: number; name: string; description?: string | null; grossPrice: number | null; retailPrice: number | null }[] }> {
   return request(`operator-supply/${operatorUid}`);
 }
 
@@ -363,7 +363,7 @@ export async function registerDeviceFull(
   code: string,
   alias: string,
   deviceInfo: object,
-): Promise<{ device_id?: string; device_code: string; webview_signature: string; session_id: string }> {
+): Promise<{ device_id?: string; device_code: string; alias?: string | null; webview_signature: string; session_id: string }> {
   const url = `${API_BASE}/auth/device-register`;
   const res = await fetch(url, {
     method: 'POST',

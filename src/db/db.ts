@@ -44,6 +44,7 @@ export interface Visita {
   id?: string;
   firmaId: string;
   firmaName?: string;
+  representante: string;
   date: string;
   time: string;
   technicians: string[];
