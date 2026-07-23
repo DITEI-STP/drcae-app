@@ -26,7 +26,9 @@ export default defineConfig(({ mode }) => {
         strategies: 'injectManifest',
         srcDir: 'src',
         filename: 'sw.ts',
-        registerType: 'prompt',
+        // 'autoUpdate': o dispositivo corre em kiosk sem ninguém para clicar
+        // num banner "Actualizar" — o SW novo assume e recarrega sozinho.
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         scope: '/app/',
         base: '/app/',

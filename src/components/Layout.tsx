@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { DRCAE_APP_VERSION } from '../lib/version';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid } from 'lucide-react';
@@ -12,22 +12,24 @@ import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
 import { toast } from '../lib/notifications';
 import { useChatUnread } from '../lib/useChatUnread';
+import { useAppGrants } from '../lib/grants';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
+// Cada item de navegação só aparece se o agente tiver o grant app:page:*
+// correspondente (ver src/lib/grants.ts e o inventário em
+// drcae-backend/src/assets/resources.seed.json).
 const allNavItems = [
-  { to: '/', icon: Home, label: 'Início' },
-  { to: '/firmas', icon: Briefcase, label: 'Firmas' },
-  { to: '/visitas', icon: ClipboardList, label: 'Visitas' },
-  { to: '/equipe', icon: Users, label: 'Equipe' },
-  { to: '/mapa', icon: MapIcon, label: 'Mapa' },
-  { to: '/central', icon: RadioTower, label: 'Central' },
-  { to: '/settings', icon: Settings, label: 'Sistema' },
+  { to: '/', icon: Home, label: 'Início', pageKey: 'app:page:home' },
+  { to: '/firmas', icon: Briefcase, label: 'Firmas', pageKey: 'app:page:operators' },
+  { to: '/visitas', icon: ClipboardList, label: 'Visitas', pageKey: 'app:page:inspections' },
+  { to: '/equipe', icon: Users, label: 'Equipe', pageKey: 'app:page:team' },
+  { to: '/mapa', icon: MapIcon, label: 'Mapa', pageKey: 'app:page:map' },
+  { to: '/central', icon: RadioTower, label: 'Central', pageKey: 'app:page:central' },
+  { to: '/settings', icon: Settings, label: 'Sistema', pageKey: 'app:page:settings' },
 ];
 
 const PRIMARY_NAV_COUNT = 4;
-const primaryNavItems = allNavItems.slice(0, PRIMARY_NAV_COUNT);
-const overflowNavItems = allNavItems.slice(PRIMARY_NAV_COUNT);
 
 interface LayoutProps {
   onLogout: () => void;
@@ -70,6 +72,14 @@ export default function Layout({ onLogout }: LayoutProps) {
 
   const navigate = useNavigate();
   const unreadChatCount = useChatUnread(isOnline);
+
+  const grants = useAppGrants();
+  const visibleNavItems = useMemo(
+    () => allNavItems.filter((item) => grants.includes(item.pageKey)),
+    [grants],
+  );
+  const primaryNavItems = visibleNavItems.slice(0, PRIMARY_NAV_COUNT);
+  const overflowNavItems = visibleNavItems.slice(PRIMARY_NAV_COUNT);
 
   const syncRunningRef = useRef(false);
 
@@ -368,7 +378,7 @@ export default function Layout({ onLogout }: LayoutProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar (Tablet & Desktop) */}
         <nav className="hidden md:flex flex-col w-20 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 items-center py-6 gap-6 z-20 shrink-0">
-          {allNavItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

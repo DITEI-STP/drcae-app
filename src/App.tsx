@@ -37,6 +37,7 @@ import {
   getPairingCredentials,
   clearPairingCredentials,
 } from './lib/pairing';
+import { wipeLocalState } from './lib/deviceWipe';
 import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSynced, type AppLogEntry } from './lib/appLogs';
 
@@ -1519,9 +1520,13 @@ export default function App() {
     setDevicePending(false);
   };
 
-  const handleRepair = useCallback(() => {
-    clearPairingCredentials();
-    setSessionState('needs_pairing');
+  const handleRepair = useCallback(async () => {
+    // Reemparelhar pode significar mudar de ambiente/servidor — apaga todos
+    // os dados locais (Dexie, localStorage, caches) para evitar que registos
+    // do servidor antigo colidam com o novo (visitas/firmas com ids que o
+    // novo backend nunca viu). Recarrega para reiniciar com estado limpo.
+    await wipeLocalState();
+    window.location.reload();
   }, []);
 
   const handleApproved = useCallback(() => {

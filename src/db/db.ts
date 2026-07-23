@@ -47,7 +47,7 @@ export interface Visita {
   date: string;
   time: string;
   technicians: string[];
-  status: string; // 'Inconformes', 'Infrações', 'Regularizado'
+  status: string; // 'Infrações', 'Inconformes', 'Recomendações', 'Regularizado'
   notes?: string;
   atividadeEconomica?: string;
   geolocation?: { lat: number; lng: number } | null;
@@ -78,10 +78,15 @@ export interface Infracao {
 export interface ProdutoPreco {
   product_id: number;
   name: string;
-  grossPrice?: number | null;  // preço do livro
-  retailPrice?: number | null; // preço do livro
+  grossPrice?: number | null;  // preço do livro (null quando o operador não tem livro em vigor)
+  retailPrice?: number | null; // preço do livro (null quando o operador não tem livro em vigor)
   gross?: string;              // preço informado pelo agente
   retail?: string;             // preço informado pelo agente
+  // Modo manual (operador sem livro em vigor): o agente classifica cada
+  // preço preenchido como conforme/não conforme, já que não há preço de
+  // referência para comparação automática.
+  grossEval?: 'conforme' | 'nao_conforme' | null;
+  retailEval?: 'conforme' | 'nao_conforme' | null;
   visitaId?: string;
 }
 

@@ -156,6 +156,41 @@ function InfractionCard({ type, severity, minimum_penalty, maximum_penalty, recu
   );
 }
 
+type Conformidade = 'conforme' | 'nao_conforme' | null;
+
+// Modo automático (operador com livro em vigor): compara o preço informado
+// com o preço de referência do livro. Modo manual (sem livro): usa a
+// classificação que o agente já escolheu em NovaVisita.tsx STEP 6.
+function resolveConformidade(
+  reported: string | undefined,
+  book: number | null | undefined,
+  manualEval: 'conforme' | 'nao_conforme' | null | undefined,
+): Conformidade {
+  if (manualEval) return manualEval;
+  if (!reported) return null;
+  const reportedNum = parseFloat(reported);
+  if (Number.isNaN(reportedNum) || book == null) return null;
+  return reportedNum <= book ? 'conforme' : 'nao_conforme';
+}
+
+function ConformidadeBadge({ conformidade }: { conformidade: Conformidade }) {
+  if (conformidade === 'conforme') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+        <Check className="w-2.5 h-2.5" /> Conforme
+      </span>
+    );
+  }
+  if (conformidade === 'nao_conforme') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+        <XCircle className="w-2.5 h-2.5" /> Não Conforme
+      </span>
+    );
+  }
+  return null;
+}
+
 function ProdutosSection({ produtos }: { produtos: ProdutoPreco[] }) {
   if (!produtos.length) return null;
 
@@ -179,20 +214,24 @@ function ProdutosSection({ produtos }: { produtos: ProdutoPreco[] }) {
         {produtos.map((p, i) => {
           const grossInfo = formatPreco(p.gross, p.grossPrice);
           const retailInfo = formatPreco(p.retail, p.retailPrice);
+          const grossConformidade = resolveConformidade(p.gross, p.grossPrice, p.grossEval);
+          const retailConformidade = resolveConformidade(p.retail, p.retailPrice, p.retailEval);
           return (
             <div key={i} className="flex items-center justify-between gap-2 border-b border-slate-50 dark:border-slate-800 pb-2 last:border-0 last:pb-0">
               <span className="text-sm font-medium text-slate-800 dark:text-slate-200 flex-1 leading-tight">{p.name}</span>
               <div className="flex items-center gap-3 shrink-0">
                 {grossInfo && (
-                  <div className="text-right">
+                  <div className="text-right space-y-1">
                     <p className="text-[9px] text-slate-400 font-bold uppercase">Grosso</p>
                     <p className={cn('text-xs font-bold font-mono', grossInfo.isBook ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300')}>{grossInfo.value}</p>
+                    <ConformidadeBadge conformidade={grossConformidade} />
                   </div>
                 )}
                 {retailInfo && (
-                  <div className="text-right">
+                  <div className="text-right space-y-1">
                     <p className="text-[9px] text-slate-400 font-bold uppercase">Retalho</p>
                     <p className={cn('text-xs font-bold font-mono', retailInfo.isBook ? 'text-slate-400' : 'text-slate-700 dark:text-slate-300')}>{retailInfo.value}</p>
+                    <ConformidadeBadge conformidade={retailConformidade} />
                   </div>
                 )}
               </div>
@@ -667,9 +706,10 @@ export default function VisitaDetail() {
               {/* Status Selection */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block font-mono">Resultado da Vistoria</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {[
                     { val: 'Regularizado', label: 'Regularizado', desc: 'Sem infrações', color: 'border-emerald-200 text-emerald-800 bg-emerald-50/30 dark:border-emerald-900/30 dark:text-emerald-400 dark:bg-emerald-950/10', activeColor: 'ring-2 ring-emerald-500 bg-emerald-50 border-emerald-500 dark:bg-emerald-950/30 dark:border-emerald-600' },
+                    { val: 'Recomendações', label: 'Recomendações', desc: 'Sem infrações, com recomendações', color: 'border-sky-200 text-sky-800 bg-sky-50/30 dark:border-sky-900/30 dark:text-sky-400 dark:bg-sky-950/10', activeColor: 'ring-2 ring-sky-500 bg-sky-50 border-sky-500 dark:bg-sky-950/30 dark:border-sky-600' },
                     { val: 'Inconformes', label: 'Inconformes', desc: 'Anomalias leves', color: 'border-amber-200 text-amber-800 bg-amber-50/30 dark:border-amber-900/30 dark:text-amber-400 dark:bg-amber-950/10', activeColor: 'ring-2 ring-amber-500 bg-amber-50 border-amber-500 dark:bg-amber-950/30 dark:border-amber-600' },
                     { val: 'Infrações', label: 'Infrações', desc: 'Falta gravíssima', color: 'border-red-200 text-red-800 bg-red-50/30 dark:border-red-900/30 dark:text-red-400 dark:bg-red-950/10', activeColor: 'ring-2 ring-red-500 bg-red-50 border-red-500 font-bold dark:bg-red-950/30 dark:border-red-600' }
                   ].map(opt => {

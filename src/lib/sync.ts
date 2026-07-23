@@ -4,6 +4,7 @@ import { AuthSyncError } from './api';
 import { probeServerReachability } from './serverReachability';
 import { patchSyncState } from './syncState';
 import { addAppLog } from './appLogs';
+import { setStoredGrants } from './grants';
 
 // String.fromCharCode(...array) falha com arrays > ~65k elementos.
 // Esta versão itera em chunks para suportar ficheiros de qualquer tamanho.
@@ -77,6 +78,12 @@ export async function syncPull(profile?: string): Promise<number> {
     window.dispatchEvent(new CustomEvent('drcae:sync-profile-updated', {
       detail: { profile: response.sync_profile },
     }));
+  }
+
+  // Atualizar privilégios (grants) do agente — refletem alterações feitas
+  // no admin (perfil/utilizador) sem exigir novo login.
+  if (Array.isArray(response.grants)) {
+    setStoredGrants(response.grants);
   }
 
   // Actualizar Firmas
@@ -185,7 +192,16 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
     return { pushed: 0, errors: [] };
   }
 
-  // Recolher preços de cesta básica de todas as visitas com produtos
+  // Recolher preços de cesta básica de todas as visitas com produtos.
+  // Conformidade é calculada por campo (grosso/retalho separadamente) para
+  // que o admin possa mostrar qual dos dois está irregular — `eval` (0/1/-1)
+  // continua a ser guardado como resumo agregado do produto para compatibilidade
+  // com código existente (ex.: classificação de estado da fiscalização).
+  const toEval = (num: number | null, book: number | null | undefined): 'conforme' | 'nao_conforme' | null => {
+    if (num == null || book == null) return null;
+    return num <= book ? 'conforme' : 'nao_conforme';
+  };
+
   const prices: any[] = [];
   for (const v of unsyncedVisitas) {
     if (v.produtos && v.produtos.length > 0) {
@@ -193,10 +209,23 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
         if (p.product_id && (p.gross || p.retail)) {
           const grossNum = p.gross ? parseFloat(p.gross) : null;
           const retailNum = p.retail ? parseFloat(p.retail) : null;
-          // eval: 1=conforme, 0=não conforme, -1=n/a
+          const hasBook = p.grossPrice != null || p.retailPrice != null;
+          const mode: 'auto' | 'manual' = hasBook ? 'auto' : 'manual';
+
+          // Modo automático — operador tem livro de cálculo em vigor, compara
+          // cada campo preenchido com o preço de referência. Modo manual —
+          // sem livro, usa a classificação que o agente já escolheu em
+          // NovaVisita.tsx STEP 6.
+          const grossEval = mode === 'auto' ? toEval(grossNum, p.grossPrice) : (p.grossEval ?? null);
+          const retailEval = mode === 'auto' ? toEval(retailNum, p.retailPrice) : (p.retailEval ?? null);
+
+          const fieldEvals = [grossEval, retailEval].filter(Boolean);
           let eval_ = -1;
-          if (grossNum != null && p.grossPrice != null) eval_ = grossNum <= p.grossPrice ? 1 : 0;
-          prices.push({ visitaId: v.id, product_id: p.product_id, gross: grossNum, retail: retailNum, eval: eval_ });
+          if (fieldEvals.includes('nao_conforme')) eval_ = 0;
+          else if (fieldEvals.includes('conforme')) eval_ = 1;
+
+          const meta = { mode, grossEval, retailEval };
+          prices.push({ visitaId: v.id, product_id: p.product_id, gross: grossNum, retail: retailNum, eval: eval_, meta });
         }
       }
     }

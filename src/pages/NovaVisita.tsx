@@ -182,7 +182,7 @@ export default function NovaVisita() {
   // Produtos de Cesta Básica
   const [supplyProducts, setSupplyProducts] = useState<{id: number, name: string, grossPrice: number | null, retailPrice: number | null}[]>([]);
   const [supplyStatus, setSupplyStatus] = useState<'idle'|'loading'|'active'|'none'>('idle');
-  const [produtosPrices, setProdutosPrices] = useState<Record<number, {gross: string, retail: string}>>({});
+  const [produtosPrices, setProdutosPrices] = useState<Record<number, {gross: string, retail: string, grossEval?: 'conforme' | 'nao_conforme', retailEval?: 'conforme' | 'nao_conforme'}>>({});
 
   const [notes, setNotes] = useState('');
   const [anexos, setAnexos] = useState<PendingAnexo[]>([]);
@@ -315,7 +315,10 @@ export default function NovaVisita() {
   };
 
   // Carregar produtos de cesta básica quando firma é selecionada
-  // Tenta cache local primeiro quando offline; guarda no cache quando online
+  // Tenta cache local primeiro quando offline; guarda no cache quando online.
+  // 'active'  = operador tem livro de cálculo em vigor (comparação automática)
+  // 'none'    = sem livro — supplyProducts ainda pode vir preenchido com a
+  //             lista completa de produtos para preenchimento manual
   useEffect(() => {
     if (!firmaId || !firmas) { setSupplyProducts([]); setSupplyStatus('none'); return; }
     const firma = firmas.find(f => f.id === firmaId);
@@ -324,9 +327,9 @@ export default function NovaVisita() {
     const tryCache = async (): Promise<boolean> => {
       try {
         const cached = await db.table('metadata').get(`supply_${firma.id!}`);
-        if (cached?.value && Array.isArray(cached.value) && cached.value.length > 0) {
-          setSupplyProducts(cached.value);
-          setSupplyStatus('active');
+        if (cached?.value?.products?.length > 0) {
+          setSupplyProducts(cached.value.products);
+          setSupplyStatus(cached.value.bookStatus === 'active' ? 'active' : 'none');
           return true;
         }
       } catch { /* sem cache */ }
@@ -342,16 +345,14 @@ export default function NovaVisita() {
     setSupplyStatus('loading');
     import('../lib/api').then(api => {
       api.getOperatorSupply(firma.id!).then(res => {
-        if (res.bookStatus === 'active' && res.products.length > 0) {
-          setSupplyProducts(res.products);
-          setSupplyStatus('active');
-          // Guardar no cache para uso offline
+        setSupplyProducts(res.products || []);
+        setSupplyStatus(res.bookStatus === 'active' && res.products.length > 0 ? 'active' : 'none');
+        if (res.products?.length > 0) {
+          // Guardar no cache para uso offline (inclui o modo — livro ou manual)
           db.table('metadata').put({
             key: `supply_${firma.id!}`,
-            value: res.products,
+            value: { bookStatus: res.bookStatus, products: res.products },
           }).catch(() => {});
-        } else {
-          setSupplyStatus('none');
         }
       }).catch(async () => {
         // Falha de rede — tentar cache local
@@ -555,10 +556,14 @@ export default function NovaVisita() {
     const currentRegistrationDate = format(new Date(), 'yyyy-MM-dd');
     const currentRegistrationTime = format(new Date(), 'HH:mm'); // HH:mm — sem segundos para compatibilidade com o backend
     
+    // Prioridade: Infrações > Inconformes > Recomendações > Regularizado
+    // (mesma taxonomia usada no admin — ver inspectionStatus.ts).
     let status = 'Regularizado';
     if (infracoes.length > 0) {
       const hasCritical = infracoes.some(i => i.severity === 'Crítica' || i.severity === 'Alta');
       status = hasCritical ? 'Infrações' : 'Inconformes';
+    } else if (recomendacoes.length > 0) {
+      status = 'Recomendações';
     }
 
     let autoCaptured = false;
@@ -621,6 +626,8 @@ export default function NovaVisita() {
           retailPrice: p.retailPrice,
           gross: produtosPrices[p.id]?.gross || '',
           retail: produtosPrices[p.id]?.retail || '',
+          grossEval: produtosPrices[p.id]?.grossEval ?? null,
+          retailEval: produtosPrices[p.id]?.retailEval ?? null,
           visitaId,
         })).filter(Boolean) as any[] || undefined,
       createdAt: Date.now(),
@@ -1587,7 +1594,9 @@ export default function NovaVisita() {
             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-1">
               <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Produtos de Cesta Básica</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Registe os preços praticados pelo operador e compare com o livro de cálculo em vigor.
+                {supplyStatus === 'none' && supplyProducts.length > 0
+                  ? 'Este operador não tem livro de cálculo em vigor. Registe os preços comercializados e classifique manualmente a conformidade.'
+                  : 'Registe os preços praticados pelo operador e compare com o livro de cálculo em vigor.'}
               </p>
             </div>
 
@@ -1598,12 +1607,88 @@ export default function NovaVisita() {
               </div>
             )}
 
-            {supplyStatus === 'none' && (
+            {supplyStatus === 'none' && supplyProducts.length === 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 text-center space-y-2">
-                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Sem livro de cálculo disponível</p>
-                <p className="text-xs text-amber-700 dark:text-amber-400">Este operador não possui livro de cálculo de preço aprovado ou a ligação está indisponível. Pode avançar para o próximo passo.</p>
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Sem produtos de cesta básica disponíveis</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400">Não foi possível obter a lista de produtos (ligação indisponível). Pode avançar para o próximo passo.</p>
               </div>
             )}
+
+            {supplyStatus === 'none' && supplyProducts.length > 0 && supplyProducts.map(produto => {
+              const prices = produtosPrices[produto.id] || { gross: '', retail: '' };
+              const setEval = (field: 'grossEval' | 'retailEval', value: 'conforme' | 'nao_conforme') => {
+                setProdutosPrices(prev => ({
+                  ...prev,
+                  [produto.id]: {
+                    ...prev[produto.id],
+                    gross: prev[produto.id]?.gross || '',
+                    retail: prev[produto.id]?.retail || '',
+                    [field]: prev[produto.id]?.[field] === value ? undefined : value,
+                  },
+                }));
+              };
+              const EvalToggle = ({ field }: { field: 'grossEval' | 'retailEval' }) => (
+                <div className="flex gap-1.5 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEval(field, 'conforme')}
+                    className={cn(
+                      'flex-1 text-[9px] font-bold uppercase tracking-wide py-1 rounded-lg border transition-colors',
+                      prices[field] === 'conforme'
+                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                    )}
+                  >
+                    Conforme
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEval(field, 'nao_conforme')}
+                    className={cn(
+                      'flex-1 text-[9px] font-bold uppercase tracking-wide py-1 rounded-lg border transition-colors',
+                      prices[field] === 'nao_conforme'
+                        ? 'bg-red-500 border-red-500 text-white'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                    )}
+                  >
+                    Não Conforme
+                  </button>
+                </div>
+              );
+              return (
+                <div key={produto.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{produto.name}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Preço Grosso (STN)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={prices.gross}
+                        onChange={e => setProdutosPrices(prev => ({ ...prev, [produto.id]: { ...prev[produto.id], gross: e.target.value, retail: prev[produto.id]?.retail || '' } }))}
+                        className="w-full p-2.5 text-xs border rounded-xl font-mono bg-slate-50 dark:bg-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700"
+                      />
+                      {prices.gross && <EvalToggle field="grossEval" />}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Preço Retalho (STN)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={prices.retail}
+                        onChange={e => setProdutosPrices(prev => ({ ...prev, [produto.id]: { ...prev[produto.id], retail: e.target.value, gross: prev[produto.id]?.gross || '' } }))}
+                        className="w-full p-2.5 text-xs border rounded-xl font-mono bg-slate-50 dark:bg-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700"
+                      />
+                      {prices.retail && <EvalToggle field="retailEval" />}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
 
             {supplyStatus === 'active' && supplyProducts.map(produto => {
               const prices = produtosPrices[produto.id] || { gross: '', retail: '' };

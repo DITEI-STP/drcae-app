@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import { Search, Plus, Calendar, ShieldAlert, ClipboardList, LayoutList, LayoutGrid, Check, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { useAppGrants } from '../lib/grants';
 
 type VisitNumberSource = {
   id?: string;
@@ -27,6 +28,8 @@ export default function VisitasList() {
   );
   const [syncFilter, setSyncFilter] = useState<'all' | 'pending' | 'synced'>('all');
   const navigate = useNavigate();
+  const grants = useAppGrants();
+  const canCreateInspection = grants.includes('app:transaction:inspection:create');
 
   const data = useLiveQuery(
     async () => {
@@ -304,13 +307,15 @@ export default function VisitasList() {
         )}
       </div>
 
-      <button
-        onClick={() => navigate('/visitas/nova')}
-        className="fixed bottom-24 md:bottom-8 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-600/35 transition-all hover:scale-105 active:scale-95 z-30 group"
-        title="Registar Nova Fiscalização"
-      >
-        <Plus className="w-6 h-6 transition-transform group-hover:rotate-90 duration-200" />
-      </button>
+      {canCreateInspection && (
+        <button
+          onClick={() => navigate('/visitas/nova')}
+          className="fixed bottom-24 md:bottom-8 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-600/35 transition-all hover:scale-105 active:scale-95 z-30 group"
+          title="Registar Nova Fiscalização"
+        >
+          <Plus className="w-6 h-6 transition-transform group-hover:rotate-90 duration-200" />
+        </button>
+      )}
     </div>
   );
 }

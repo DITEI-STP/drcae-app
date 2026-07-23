@@ -1,6 +1,7 @@
 import { getDrcaeAppVersion } from './version';
 import { addAppLog } from './appLogs';
 import type { AppLogEntry } from './appLogs';
+import { setStoredGrants, clearStoredGrants } from './grants';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
 
@@ -189,6 +190,9 @@ export async function login(nif: string, password: string): Promise<any> {
   if (response.officer) {
     localStorage.setItem('drcae_officer_info', JSON.stringify(response.officer));
   }
+  if (Array.isArray(response.grants)) {
+    setStoredGrants(response.grants);
+  }
   return response;
 }
 
@@ -235,6 +239,7 @@ export async function logout(): Promise<void> {
     console.error('Erro ao chamar logout no servidor:', err);
   } finally {
     setJwtToken(null);
+    clearStoredGrants();
   }
 }
 

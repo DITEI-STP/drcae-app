@@ -335,22 +335,15 @@ export default function Dashboard() {
          ) : (
             <div className="space-y-4">
                {stats.recentVisitas.map((v, i) => {
-                  let statusBg = 'bg-emerald-500';
-                  let statusText = 'Regularizado';
-                  if (v.status === 'Infrações') {
-                     statusBg = 'bg-red-500';
-                     statusText = 'Infrações';
-                  } else if (v.status === 'Inconformes') {
-                     statusBg = 'bg-amber-500';
-                     statusText = 'Inconformes';
-                  }
+                  const statusText = v.status || 'Regularizado';
 
                   return (
                      <Link key={v.id} to={`/visitas/${v.id}`} className="flex gap-3 group block">
                         <div className="flex flex-col items-center">
-                           <div className={cn("w-2 h-2 rounded-full shrink-0 mt-1.5 ring-4 ring-offset-2 ring-offset-white dark:ring-offset-slate-900", 
+                           <div className={cn("w-2 h-2 rounded-full shrink-0 mt-1.5 ring-4 ring-offset-2 ring-offset-white dark:ring-offset-slate-900",
                               v.status === 'Infrações' ? 'ring-red-100 dark:ring-red-950/40 bg-red-500' :
                               v.status === 'Inconformes' ? 'ring-amber-100 dark:ring-amber-950/40 bg-amber-500' :
+                              v.status === 'Recomendações' ? 'ring-sky-100 dark:ring-sky-950/40 bg-sky-500' :
                               'ring-emerald-100 dark:ring-emerald-950/40 bg-emerald-500'
                            )} />
                            {i < stats.recentVisitas.length - 1 && <div className="w-0.5 flex-1 bg-slate-100 dark:bg-slate-800/80 my-1" />}
@@ -361,10 +354,12 @@ export default function Dashboard() {
                               <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold">{v.date} · {v.time}</span>
                               <span className={cn(
                                  "text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                                 v.status === 'Infrações' 
+                                 v.status === 'Infrações'
                                    ? "bg-red-50 text-red-750 dark:bg-red-950/20 dark:text-red-400"
                                    : v.status === 'Inconformes'
                                    ? "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                                   : v.status === 'Recomendações'
+                                   ? "bg-sky-50 text-sky-700 dark:bg-sky-950/20 dark:text-sky-400"
                                    : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
                               )}>
                                  {statusText}

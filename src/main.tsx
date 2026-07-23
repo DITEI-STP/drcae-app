@@ -5,6 +5,7 @@ import App from './App.tsx';
 import './index.css';
 import { ThemeProvider } from './hooks/useTheme.tsx';
 import { addAppLog } from './lib/appLogs.ts';
+import './lib/deviceWipe.ts';
 
 window.addEventListener('error', (event) => {
   addAppLog('error', 'runtime', event.message, event.error || {

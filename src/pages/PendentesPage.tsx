@@ -27,6 +27,7 @@ function formatDate(dateStr: string | undefined, ts: number | undefined): string
 
 function statusColor(status: string | undefined) {
   if (status === 'Regularizado') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'Recomendações') return 'bg-sky-100 text-sky-700';
   if (status === 'Inconformes') return 'bg-amber-100 text-amber-700';
   return 'bg-red-100 text-red-700'; // Infrações
 }

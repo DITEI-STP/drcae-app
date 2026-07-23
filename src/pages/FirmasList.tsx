@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import { Search, MapPin, Building, Plus, LayoutList, LayoutGrid, RefreshCw, ShieldAlert, ShieldCheck, AlertCircle, HelpCircle, X, SlidersHorizontal, Activity } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { useAppGrants } from '../lib/grants';
 
 const getAvatarData = (name: string, nif: string) => {
   const cleanName = (name || 'Firma').trim();
@@ -72,6 +73,8 @@ export default function FirmasList() {
   const [activeTab, setActiveTab] = useState<string>('all');
   const [showGroupModal, setShowGroupModal] = useState(false);
   const navigate = useNavigate();
+  const grants = useAppGrants();
+  const canCreateOperator = grants.includes('app:transaction:operator:create');
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -121,7 +124,9 @@ export default function FirmasList() {
           numInfracoes += infracoesCountMap.get(v.id!) || 0;
           if (v.status === 'Infrações') hasInfracoesVisitas = true;
           else if (v.status === 'Inconformes') hasInconformesVisitas = true;
-          else if (v.status === 'Regularizado') hasRegularizadoVisitas = true;
+          // 'Recomendações' não tem infrações nem inconformidades — conta como
+          // "sem risco" tal como 'Regularizado' para efeitos de classificação.
+          else if (v.status === 'Regularizado' || v.status === 'Recomendações') hasRegularizadoVisitas = true;
         });
 
         // Determinar nível de risco/importância
@@ -584,13 +589,15 @@ export default function FirmasList() {
         )}
       </div>
 
-      <button
-        onClick={() => navigate('/firmas/nova')}
-        className="fixed bottom-24 md:bottom-8 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-600/35 transition-all hover:scale-105 active:scale-95 z-30 group"
-        title="Registar Nova Firma"
-      >
-        <Plus className="w-6 h-6 transition-transform group-hover:rotate-90 duration-200" />
-      </button>
+      {canCreateOperator && (
+        <button
+          onClick={() => navigate('/firmas/nova')}
+          className="fixed bottom-24 md:bottom-8 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-600/35 transition-all hover:scale-105 active:scale-95 z-30 group"
+          title="Registar Nova Firma"
+        >
+          <Plus className="w-6 h-6 transition-transform group-hover:rotate-90 duration-200" />
+        </button>
+      )}
 
       {/* Popover / Modal de Seleção de Agrupamento */}
       {showGroupModal && (

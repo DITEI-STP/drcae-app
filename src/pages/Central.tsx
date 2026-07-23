@@ -3,6 +3,7 @@ import { Headphones, Mic, Send, Square, RadioTower, RefreshCw } from 'lucide-rea
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
 import { playNotificationSound } from '../lib/notificationSound';
+import { useAppGrants } from '../lib/grants';
 
 type ChatMessage = {
   uid: string;
@@ -26,6 +27,8 @@ export default function Central() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const grants = useAppGrants();
+  const canSendMessage = grants.includes('app:transaction:central:message:send');
 
   const loadMessages = async () => {
     setLoading((current) => current && messages.length === 0);
@@ -201,44 +204,50 @@ export default function Central() {
           })}
         </div>
 
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-3 bg-white dark:bg-slate-900">
-          <div className="flex gap-3">
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Escreva uma mensagem para a central..."
-              className="flex-1 min-h-24 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500/30"
-            />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {recording ? `A gravar áudio... ${Math.round(elapsedMs / 1000)}s` : 'Texto e áudio seguem em tempo real via Centrifugo.'}
+        {canSendMessage ? (
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-3 bg-white dark:bg-slate-900">
+            <div className="flex gap-3">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Escreva uma mensagem para a central..."
+                className="flex-1 min-h-24 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500/30"
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => void (recording ? stopRecording() : startRecording())}
-                disabled={sending}
-                className={cn(
-                  'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all',
-                  recording
-                    ? 'bg-red-600 hover:bg-red-500 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200',
-                )}
-              >
-                {recording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                <span>{recording ? 'Parar gravação' : 'Gravar áudio'}</span>
-              </button>
-              <button
-                onClick={() => void sendText()}
-                disabled={sending || !draft.trim()}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold transition-colors"
-              >
-                <Send className="w-4 h-4" />
-                <span>{sending ? 'A enviar...' : 'Enviar'}</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {recording ? `A gravar áudio... ${Math.round(elapsedMs / 1000)}s` : 'Texto e áudio seguem em tempo real via Centrifugo.'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void (recording ? stopRecording() : startRecording())}
+                  disabled={sending}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all',
+                    recording
+                      ? 'bg-red-600 hover:bg-red-500 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200',
+                  )}
+                >
+                  {recording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  <span>{recording ? 'Parar gravação' : 'Gravar áudio'}</span>
+                </button>
+                <button
+                  onClick={() => void sendText()}
+                  disabled={sending || !draft.trim()}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>{sending ? 'A enviar...' : 'Enviar'}</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center text-xs font-semibold text-slate-400 dark:text-slate-500">
+            Sem privilégio para enviar mensagens na Central.
+          </div>
+        )}
       </div>
     </div>
   );
