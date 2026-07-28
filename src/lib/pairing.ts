@@ -1,4 +1,5 @@
 const PAIRING_KEY = 'drcae_pairing_credentials';
+const DEVICE_IDENTITY_KEY = 'drcae_device_identity';
 
 export interface DeviceInfo {
   brand: string;
@@ -113,6 +114,39 @@ export function getPairingCredentials(): PairingCredentials | null {
 
 export function clearPairingCredentials(): void {
   localStorage.removeItem(PAIRING_KEY);
+  localStorage.removeItem(DEVICE_IDENTITY_KEY);
+}
+
+export interface DeviceIdentity {
+  device_code: string | null;
+  alias: string | null;
+}
+
+/**
+ * Identidade do dispositivo para efeitos de apresentação (login e início).
+ *
+ * No browser directo vem do emparelhamento feito na própria web app; no shell
+ * nativo (drcae-webview) o emparelhamento é feito em React Native e a web app
+ * nunca vê essas credenciais — por isso o handshake devolve alias/código, que
+ * guardamos aqui. Sem isto, o dispositivo aparece como "não identificado"
+ * dentro do webview.
+ */
+export function storeDeviceIdentity(identity: DeviceIdentity): void {
+  if (!identity.device_code && !identity.alias) return;
+  localStorage.setItem(DEVICE_IDENTITY_KEY, JSON.stringify(identity));
+}
+
+export function getDeviceIdentity(): DeviceIdentity | null {
+  const creds = getPairingCredentials();
+  if (creds?.device_code) {
+    return { device_code: creds.device_code, alias: creds.alias ?? null };
+  }
+  try {
+    const raw = localStorage.getItem(DEVICE_IDENTITY_KEY);
+    return raw ? (JSON.parse(raw) as DeviceIdentity) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function checkSessionValid(): Promise<boolean> {

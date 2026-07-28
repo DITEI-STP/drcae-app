@@ -423,6 +423,21 @@ export class DrcaeDB extends Dexie {
     }
   }
 
+  // Descarta todo o conteúdo cifrado local. Usado quando a palavra-passe do
+  // agente muda (recuperação de senha): a chave AES deriva da palavra-passe,
+  // pelo que os registos gravados com a anterior deixam de ser legíveis — e
+  // mantê-los apenas produziria registos corrompidos em silêncio.
+  async resetEncryptedData(): Promise<void> {
+    const tables = [
+      'firmas', 'visitas', 'infracoes', 'anexos',
+      'attachments', 'syncQueue', 'metadata',
+    ].map((name) => this.table(name));
+
+    await this.transaction('rw', tables, async () => {
+      await Promise.all(tables.map((table) => table.clear()));
+    });
+  }
+
   // Grava o canary offline inicial
   async setupOfflineCanary(): Promise<void> {
     const key = getActiveKey();

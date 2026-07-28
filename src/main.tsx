@@ -5,6 +5,7 @@ import App from './App.tsx';
 import './index.css';
 import { ThemeProvider } from './hooks/useTheme.tsx';
 import { addAppLog } from './lib/appLogs.ts';
+import { setUpdateRegistration, startAppUpdateWatcher } from './lib/appUpdate.ts';
 import './lib/deviceWipe.ts';
 
 window.addEventListener('error', (event) => {
@@ -23,13 +24,15 @@ registerSW({
   immediate: true,
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return;
-    setInterval(() => registration.update(), 60 * 60 * 1000);
+    setUpdateRegistration(registration);
   },
   onRegisterError(error) {
     console.warn('[SW] Falha ao registar service worker:', error);
     addAppLog('warn', 'service-worker', 'Falha ao registar service worker', error);
   },
 });
+
+startAppUpdateWatcher();
 
 // Aplicar tema guardado antes do render para evitar flash
 const savedTheme = localStorage.getItem('drcae_theme') || 'auto';

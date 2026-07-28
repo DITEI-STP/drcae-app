@@ -20,7 +20,7 @@ import {
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
-import { getPairingCredentials } from '../lib/pairing';
+import { useDeviceIdentity } from '../lib/deviceIdentity';
 
 // Helper determinístico para iniciais e gradientes de firmas
 const getAvatarData = (name: string, nif: string) => {
@@ -151,7 +151,18 @@ export default function Dashboard() {
   const isDirectBrowser = React.useMemo(() => {
     return !window.navigator.userAgent.includes('DrcaeWebview');
   }, []);
-  const pairedDevice = React.useMemo(() => getPairingCredentials(), []);
+  const pairedDevice = useDeviceIdentity();
+
+  // Primeiro nome do agente autenticado (o nome completo não cabe no banner).
+  const officerFirstName = React.useMemo(() => {
+    try {
+      const info = JSON.parse(localStorage.getItem('drcae_officer_info') || 'null');
+      const name = String(info?.name ?? '').trim();
+      return name ? name.split(/\s+/)[0] : 'Agente';
+    } catch {
+      return 'Agente';
+    }
+  }, []);
 
   const hasDefined = localStorage.getItem('drcae_equipe_definida') === 'true';
 
@@ -199,7 +210,7 @@ export default function Dashboard() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />
         <div className="relative flex justify-between items-start">
           <div className="space-y-1.5">
-            <h2 className="text-xl font-black tracking-tight">{getGreeting()}, Agente!</h2>
+            <h2 className="text-xl font-black tracking-tight">{getGreeting()}, {officerFirstName}!</h2>
             <p className="text-slate-400 text-[11px] font-semibold capitalize flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-indigo-400" />
               {getFormattedDate()}

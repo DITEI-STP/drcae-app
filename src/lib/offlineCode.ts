@@ -1,4 +1,4 @@
-import { getPairingCredentials } from './pairing';
+import { getDeviceIdentity } from './pairing';
 import { db } from '../db/db';
 
 /**
@@ -26,7 +26,7 @@ function computeChecksum(data: string): string {
 }
 
 export async function generateOfflineCode(): Promise<string> {
-  const creds = getPairingCredentials();
+  const creds = getDeviceIdentity();
   // device_code já tem 3 chars após padronização; fallback a "XXX" em caso de ausência
   const ddd = (creds?.device_code ?? 'XXX').slice(0, 3).toUpperCase().padStart(3, '0');
 

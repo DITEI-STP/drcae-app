@@ -2,7 +2,9 @@ import { getDrcaeAppVersion } from './version';
 import { addAppLog } from './appLogs';
 import type { AppLogEntry } from './appLogs';
 import { setStoredGrants, clearStoredGrants } from './grants';
+import { storeDeviceIdentity } from './pairing';
 
+const AUTH_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/auth';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
 
 // Erro específico para falhas de autenticação durante sync background.
@@ -162,7 +164,12 @@ export async function getSalt(): Promise<{ salt: string }> {
 }
 
 // 1.5. Verificar status de emparelhamento do dispositivo
-export async function checkDeviceStatus(): Promise<{ paired: boolean; officer_name: string | null }> {
+export async function checkDeviceStatus(): Promise<{
+  paired: boolean;
+  officer_name: string | null;
+  device_code?: string | null;
+  alias?: string | null;
+}> {
   const deviceId = getDeviceId();
   return request(`auth/device-status?device_id=${deviceId}`);
 }
@@ -408,7 +415,11 @@ export async function requestLaunchToken(
 }
 
 // Troca launch_token pelo cookie __wvs (Set-Cookie HttpOnly)
-export async function performHandshake(launchToken: string): Promise<{ device_id?: string }> {
+export async function performHandshake(launchToken: string): Promise<{
+  device_id?: string;
+  device_code?: string | null;
+  alias?: string | null;
+}> {
   const url = `${API_BASE}/auth/webview-handshake`;
   const res = await fetch(url, {
     method: 'POST',
@@ -427,7 +438,38 @@ export async function performHandshake(launchToken: string): Promise<{ device_id
   if (result.device_id) {
     setDeviceId(result.device_id);
   }
+  storeDeviceIdentity({
+    device_code: result.device_code ?? null,
+    alias: result.alias ?? null,
+  });
   return result;
+}
+
+// Recuperação de senha do agente: pedido por NIF (resposta sempre neutra) e
+// confirmação com o token recebido por email. Ficam fora de `request()` porque
+// vivem em /api/auth (partilhado com admin/portal) e não em /api/app.
+export async function requestPasswordReset(nif: string): Promise<void> {
+  const res = await fetch(`${AUTH_API_BASE}/app/password-reset/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nif }),
+  });
+  if (!res.ok) {
+    throw new Error('Não foi possível processar o pedido de recuperação.');
+  }
+}
+
+export async function confirmPasswordReset(token: string, password: string): Promise<{ result: boolean; message: string }> {
+  const res = await fetch(`${AUTH_API_BASE}/app/password-reset/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return {
+    result: !!data.result,
+    message: data.message || (res.ok ? '' : `Erro ${res.status}`),
+  };
 }
 
 export async function updateDeviceTeam(team: string): Promise<any> {

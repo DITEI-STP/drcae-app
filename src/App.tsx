@@ -32,11 +32,15 @@ import { toast, customAlert } from './lib/notifications';
 import { useTheme } from './hooks/useTheme';
 import { cn } from './lib/utils';
 import PairingScreen from './screens/PairingScreen';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import {
   checkSessionValid,
   getPairingCredentials,
   clearPairingCredentials,
 } from './lib/pairing';
+import { checkForAppUpdate } from './lib/appUpdate';
+import { useDeviceIdentity } from './lib/deviceIdentity';
+import { DRCAE_APP_VERSION } from './lib/version';
 import { wipeLocalState } from './lib/deviceWipe';
 import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSynced, type AppLogEntry } from './lib/appLogs';
@@ -56,6 +60,15 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const [appLogs, setAppLogs] = useState<AppLogEntry[]>(() => getAppLogs());
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [updateState, setUpdateState] = useState<
+    'idle' | 'checking' | 'update-found' | 'up-to-date' | 'offline' | 'unsupported'
+  >('idle');
+  const deviceIdentity = useDeviceIdentity();
+
+  const handleCheckUpdate = async () => {
+    setUpdateState('checking');
+    setUpdateState(await checkForAppUpdate(true));
+  };
 
   const stats = useLiveQuery(async () => {
     const [
@@ -450,6 +463,60 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
       
+      {/* CARD DE ACTUALIZAÇÃO DA APLICAÇÃO */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <ArrowDownCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Versão da Aplicação</h3>
+          <span className="ml-auto text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
+            {DRCAE_APP_VERSION}
+          </span>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+            A aplicação actualiza-se sozinha sempre que estiver online. Use esta opção para procurar
+            de imediato uma versão nova — se existir, a aplicação recarrega automaticamente.
+          </p>
+
+          {updateState !== 'idle' && updateState !== 'checking' && (
+            <div className={cn(
+              'rounded-xl px-4 py-3 border flex items-start gap-2.5 text-xs font-semibold',
+              updateState === 'update-found'
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                : updateState === 'up-to-date'
+                ? 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30 text-amber-700 dark:text-amber-400'
+            )}>
+              {updateState === 'update-found' ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-px" />}
+              <span>
+                {updateState === 'update-found'
+                  ? 'Actualização encontrada — a aplicação vai recarregar dentro de instantes.'
+                  : updateState === 'up-to-date'
+                  ? 'Já está a usar a versão mais recente.'
+                  : updateState === 'offline'
+                  ? 'Sem ligação ao servidor. Ligue-se à rede e tente novamente.'
+                  : 'Este ambiente não suporta actualização automática. Reinstale ou reabra a aplicação para obter a versão nova.'}
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={handleCheckUpdate}
+            disabled={updateState === 'checking'}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer border',
+              updateState === 'checking'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
+            )}
+          >
+            <RefreshCw className={cn('w-4 h-4', updateState === 'checking' && 'animate-spin')} />
+            {updateState === 'checking' ? 'A procurar actualizações...' : 'Verificar actualizações'}
+          </button>
+        </div>
+      </div>
+
       {/* storage details card */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
@@ -975,15 +1042,12 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                       } catch { return 'Agente'; }
                     })()}
                   </p>
-                  {(() => {
-                    const creds = getPairingCredentials();
-                    if (!creds?.device_code) return null;
-                    return (
-                      <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">
-                        {creds.alias ? `${creds.alias} · ` : ''}{creds.device_code}
-                      </p>
-                    );
-                  })()}
+                  {deviceIdentity?.device_code || deviceIdentity?.alias ? (
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono mt-0.5">
+                      {deviceIdentity.alias ? `${deviceIdentity.alias} · ` : ''}
+                      {deviceIdentity.device_code ?? ''}
+                    </p>
+                  ) : null}
                </div>
             </div>
             <button onClick={onLogout} className="text-sm font-bold text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 cursor-pointer">
@@ -996,8 +1060,29 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 }
 
 function isSetupPath() {
+  return matchesRootPath('setup');
+}
+
+function isResetPasswordPath() {
+  return matchesRootPath('reset-password');
+}
+
+// Ecrãs servidos antes de qualquer sessão/emparelhamento: existem tanto na
+// origem dedicada da app (`/reset-password`) como no host partilhado
+// (`/app/reset-password`).
+function matchesRootPath(name: string) {
   const path = window.location.pathname.replace(/\/+$/, '');
-  return path === '/setup' || path === '/app/setup';
+  return path === `/${name}` || path === `/app/${name}`;
+}
+
+async function countUnsyncedRecords(): Promise<number> {
+  const [f, v, i, a] = await Promise.all([
+    db.firmas.filter(x => !x.synced).count(),
+    db.visitas.filter(x => !x.synced).count(),
+    db.infracoes.filter(x => !x.synced).count(),
+    db.anexos.filter(x => !x.synced).count(),
+  ]);
+  return f + v + i + a;
 }
 
 function LoginPage({ onLogin }: { onLogin: () => void }) {
@@ -1005,9 +1090,42 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const pairedDevice = getPairingCredentials();
+  const pairedDevice = useDeviceIdentity();
   const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mode, setMode] = useState<'login' | 'recover'>('login');
+  const [recoverNif, setRecoverNif] = useState('');
+  const [recoverLoading, setRecoverLoading] = useState(false);
+  const [recoverInfo, setRecoverInfo] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const switchMode = (next: 'login' | 'recover') => {
+    if (next === 'recover') setRecoverNif(nif);
+    setMode(next);
+    setError('');
+    setRecoverInfo(null);
+  };
+
+  const handleRecover = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = recoverNif.trim();
+    if (!target) return;
+    setRecoverLoading(true);
+    setRecoverInfo(null);
+    try {
+      await api.requestPasswordReset(target);
+      setRecoverInfo({
+        ok: true,
+        text: 'Se o NIF existir no sistema, enviámos um link de recuperação para o email associado à conta. O link é válido por 1 hora.',
+      });
+    } catch {
+      setRecoverInfo({
+        ok: false,
+        text: 'Não foi possível enviar o pedido. É necessária ligação ao servidor para recuperar a palavra-passe.',
+      });
+    } finally {
+      setRecoverLoading(false);
+    }
+  };
 
   useEffect(() => {
     const hasFullscreenSupport = typeof document.documentElement.requestFullscreen === 'function';
@@ -1111,7 +1229,20 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
           return;
         }
 
-        // 4. Sucesso online: actualizar canary e assinatura local
+        // 4. Sucesso online: se a cache local foi cifrada com outra
+        //    palavra-passe (tipicamente após uma recuperação de senha), a
+        //    chave derivada agora já não a decifra — descartá-la é a única
+        //    saída, e o sync seguinte repõe os dados a partir do servidor.
+        if (!(await db.verifyOfflineKey())) {
+          const orphanCount = await countUnsyncedRecords();
+          await db.resetEncryptedData();
+          customAlert.warning(
+            'Cache local reposta',
+            orphanCount > 0
+              ? `A palavra-passe mudou desde a última sessão neste dispositivo. Os dados guardados localmente estavam cifrados com a anterior e foram descartados — incluindo ${orphanCount} registo(s) que ainda não tinham sido sincronizados.`
+              : 'A palavra-passe mudou desde a última sessão neste dispositivo. Os dados guardados localmente foram repostos a partir do servidor.',
+          );
+        }
         await db.setupOfflineCanary();
         const sigHex = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
         localStorage.setItem(`drcae_local_cred_${nif}`, JSON.stringify({ sigHex, saltHex: salt }));
@@ -1150,20 +1281,74 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         <div className="mb-6 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center gap-2 text-center">
           <Smartphone className="w-4 h-4 text-blue-500 shrink-0" />
           <div>
+            {/* Chegar aqui implica dispositivo emparelhado; quando o alias
+                ainda não chegou, mostrar o identificador em vez de negar a
+                identificação. */}
             <p className="font-bold text-blue-700 text-sm leading-tight">
-              {pairedDevice?.alias || 'Dispositivo não identificado'}
+              {pairedDevice?.alias || 'A identificar dispositivo…'}
             </p>
             <p className="text-[11px] font-mono text-blue-400 leading-tight">
-              {pairedDevice?.device_code || '—'}
+              {pairedDevice?.device_code || api.getDeviceId().slice(-8)}
             </p>
           </div>
         </div>
 
+        {mode === 'recover' ? (
+          <>
+            <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Recuperar palavra-passe</h1>
+            <p className="text-sm text-center text-slate-500 mb-6 font-medium">
+              Enviamos um link de recuperação para o email da sua conta.
+            </p>
+
+            {recoverInfo && (
+              <div className={cn(
+                'p-3 mb-4 text-xs font-semibold rounded-xl text-center border',
+                recoverInfo.ok
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-red-50 border-red-200 text-red-600',
+              )}>
+                {recoverInfo.text}
+              </div>
+            )}
+
+            <form onSubmit={handleRecover} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">NIF do Agente</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  required
+                  value={recoverNif}
+                  onChange={(e) => { setRecoverNif(e.target.value.replace(/\D/g, '')); setRecoverInfo(null); }}
+                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-sm font-medium transition-all"
+                  placeholder="Ex: 123456789"
+                  disabled={recoverLoading}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={recoverLoading || !recoverNif.trim()}
+                className="w-full py-3.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors uppercase tracking-wide flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {recoverLoading ? <><RefreshCw className="w-4 h-4 animate-spin" /> A enviar...</> : 'Enviar link de recuperação'}
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                className="w-full text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                Voltar ao início de sessão
+              </button>
+            </form>
+          </>
+        ) : (
+        <>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">
           {isServerReachable() ? 'Conectado ao Servidor' : 'Modo Offline - Acesso Criptografado'}
         </p>
-        
+
         {error && (
           <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-600 text-xs font-semibold rounded-xl text-center">
             {error}
@@ -1206,6 +1391,16 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
             {loading ? 'A processar...' : 'Iniciar Sessão'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={() => switchMode('recover')}
+          className="mt-5 w-full text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+        >
+          Esqueci-me da palavra-passe
+        </button>
+        </>
+        )}
       </div>
     </div>
   );
@@ -1541,6 +1736,10 @@ export default function App() {
 
   if (isSetupPath()) {
     return <SetupPage />;
+  }
+
+  if (isResetPasswordPath()) {
+    return <ResetPasswordPage />;
   }
 
   // Estados de sessão antes do login
