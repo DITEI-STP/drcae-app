@@ -15,12 +15,22 @@ import {
   Plus,
   DownloadCloud,
   Smartphone,
-  Hash
+  Hash,
+  Navigation,
+  PauseCircle,
+  Radar as RadarIcon,
+  Footprints,
+  Rabbit,
+  Bike,
+  Car
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
 import { useDeviceIdentity } from '../lib/deviceIdentity';
+import { useMotionState, describeMotion } from '../lib/motionState';
+import NearbyOperatorsRadar from '../components/NearbyOperatorsRadar';
+import { useOperadores } from '../lib/operadoresCache';
 
 // Helper determinístico para iniciais e gradientes de firmas
 const getAvatarData = (name: string, nif: string) => {
@@ -104,49 +114,51 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Live query unificada com estatísticas, pendentes de sync, atividades recentes e firmas novas
-  const stats = useLiveQuery(async () => {
-    const firmasCount = await db.firmas.count();
-    const visitasCount = await db.visitas.count();
-    const infracoesCount = await db.infracoes.count();
+  // Contagens: `count()` não desencripta nada, pelo que o ecrã pinta de
+  // imediato com elas enquanto o resto vem a caminho.
+  const counts = useLiveQuery(
+    async () => ({
+      firmas: await db.firmas.count(),
+      visitas: await db.visitas.count(),
+      infracoes: await db.infracoes.count(),
+    }),
+    [],
+    { firmas: 0, visitas: 0, infracoes: 0 },
+  );
 
-    const allVisitas = await db.visitas.toArray();
-    const pendingVisitas = allVisitas.filter(v => !v.synced).length;
+  // Listas recentes e pendentes de sync. Derivam do mesmo snapshot que o radar
+  // consome — antes cada um lia as tabelas por sua conta, duplicando ~1760
+  // desencriptações por render e fazendo a navegação travar (ver
+  // operadoresCache).
+  const { data: operadores } = useOperadores();
 
-    // Ordena visitas por data e hora decrescente
-    const sortedVisitas = allVisitas.sort((a, b) => {
-      const dateTimeA = new Date(`${a.date}T${a.time || '00:00:00'}`).getTime();
-      const dateTimeB = new Date(`${b.date}T${b.time || '00:00:00'}`).getTime();
-      return dateTimeB - dateTimeA;
-    });
+  const stats = React.useMemo(() => {
+    const pendingVisitas = operadores.visitas.filter(v => !v.synced).length;
 
-    // Mapeia o nome dos operadores
-    const recentVisitasRaw = sortedVisitas.slice(0, 3);
-    const recentVisitas = await Promise.all(
-      recentVisitasRaw.map(async (v) => {
-        const f = await db.firmas.get(v.firmaId);
-        return {
-          ...v,
-          firmaName: f?.name || 'Firma Desconhecida'
-        };
+    const firmaNames = new Map(operadores.firmas.map(f => [f.id, f.name]));
+
+    const recentVisitas = [...operadores.visitas]
+      .sort((a, b) => {
+        const dateTimeA = new Date(`${a.date}T${a.time || '00:00:00'}`).getTime();
+        const dateTimeB = new Date(`${b.date}T${b.time || '00:00:00'}`).getTime();
+        return dateTimeB - dateTimeA;
       })
-    );
+      .slice(0, 3)
+      .map(v => ({ ...v, firmaName: firmaNames.get(v.firmaId) || 'Firma Desconhecida' }));
 
-    // Obtém firmas recentes
-    const allFirmas = await db.firmas.toArray();
-    const recentFirmas = allFirmas
+    const recentFirmas = [...operadores.firmas]
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
       .slice(0, 3);
 
     return {
-      firmas: firmasCount,
-      visitas: visitasCount,
-      infracoes: infracoesCount,
+      firmas: counts.firmas,
+      visitas: counts.visitas,
+      infracoes: counts.infracoes,
       pendingVisitas,
       recentVisitas,
-      recentFirmas
+      recentFirmas,
     };
-  }, [], { firmas: 0, visitas: 0, infracoes: 0, pendingVisitas: 0, recentVisitas: [], recentFirmas: [] });
+  }, [operadores, counts]);
 
   const isDirectBrowser = React.useMemo(() => {
     return !window.navigator.userAgent.includes('DrcaeWebview');
@@ -165,6 +177,26 @@ export default function Dashboard() {
   }, []);
 
   const hasDefined = localStorage.getItem('drcae_equipe_definida') === 'true';
+
+  const motionState = useMotionState();
+  const motion = describeMotion(motionState);
+
+  // Só ícone, sem rótulo: os modos são poucos e reconhecíveis, e o cabeçalho
+  // de boas-vindas não tem largura para mais texto. O title dá o nome a quem
+  // precise de o confirmar.
+  const TravelIcon = {
+    ON_FOOT: Footprints,
+    RUNNING: Rabbit,
+    CYCLING: Bike,
+    VEHICLE: Car,
+  }[motion.travelMode ?? ''] ?? null;
+
+  const travelLabel = {
+    ON_FOOT: 'A pé',
+    RUNNING: 'A correr',
+    CYCLING: 'Bicicleta ou trotinete',
+    VEHICLE: 'Veículo',
+  }[motion.travelMode ?? ''] ?? '';
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -211,10 +243,32 @@ export default function Dashboard() {
         <div className="relative flex justify-between items-start">
           <div className="space-y-1.5">
             <h2 className="text-xl font-black tracking-tight">{getGreeting()}, {officerFirstName}!</h2>
-            <p className="text-slate-400 text-[11px] font-semibold capitalize flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-              {getFormattedDate()}
-            </p>
+            {/* Data e estado de deslocação partilham a linha a partir da
+                largura de tablet, para poupar altura no cabeçalho; num
+                telemóvel em retrato não caberiam lado a lado e empilham. */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-1.5">
+              <p className="text-slate-400 text-[11px] font-semibold capitalize flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                {getFormattedDate()}
+              </p>
+              {/* Estado de deslocação do tablet, publicado pelo serviço de
+                  rastreamento nativo. Só aparece dentro do drcae-webview — num
+                  browser normal não há shell nativo a publicá-lo. */}
+              {motion.known && (
+                <p className={cn(
+                  "text-[11px] font-bold flex items-center gap-1.5 sm:border-l sm:border-white/10 sm:pl-3",
+                  motion.moving ? "text-emerald-400" : "text-slate-400"
+                )}>
+                  {motion.moving
+                    ? <Navigation className="w-3.5 h-3.5" />
+                    : <PauseCircle className="w-3.5 h-3.5" />}
+                  {motion.label}
+                  {motion.moving && TravelIcon && (
+                    <TravelIcon className="w-3.5 h-3.5" aria-label={travelLabel} />
+                  )}
+                </p>
+              )}
+            </div>
           </div>
           
           <div className={cn(
@@ -327,6 +381,10 @@ export default function Dashboard() {
           </div>
         </Link>
       </div>
+
+      {/* Radar dos operadores mapeados em redor — depois do resumo, que é a
+          leitura de contexto que o agente faz primeiro. */}
+      <NearbyOperatorsRadar />
 
       {/* Fiscalizações Recentes (Timeline) */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">

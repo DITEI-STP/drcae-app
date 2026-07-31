@@ -29,3 +29,20 @@
   }
 }
 
+
+/* Pulsação discreta para assinalar recomendações por responder no radar de
+   operadores. Opacidade em vez de escala ou cor: num ecrã consultado ao sol, o
+   contraste alto cansa mais do que informa, e alterar a cor destruiria a
+   leitura da situação do operador, que o ponto já comunica. */
+@keyframes drcae-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.drcae-pulse {
+  animation: drcae-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drcae-pulse { animation: none; opacity: 0.7; }
+}

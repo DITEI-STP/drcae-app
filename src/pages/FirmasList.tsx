@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Search, MapPin, Building, Plus, LayoutList, LayoutGrid, RefreshCw, ShieldAlert, ShieldCheck, AlertCircle, HelpCircle, X, SlidersHorizontal, Activity } from 'lucide-react';
+import { Search, MapPin, Building, Plus, LayoutList, LayoutGrid, RefreshCw, ShieldAlert, ShieldCheck, AlertCircle, HelpCircle, X, SlidersHorizontal, Activity, Navigation } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useAppGrants } from '../lib/grants';
+import { useGeoLocation } from '../lib/geo';
+import { calculateDistanceKm } from '../lib/routing';
+import { classifyFirmaRisk, buildInfracoesCountByVisita, groupVisitasByFirma } from '../lib/firmaRisk';
 
 const getAvatarData = (name: string, nif: string) => {
   const cleanName = (name || 'Firma').trim();
@@ -36,6 +39,12 @@ const getAvatarData = (name: string, nif: string) => {
   const gradientIndex = Math.abs(hash) % gradients.length;
   return { initials: initials || 'F', gradient: gradients[gradientIndex] };
 };
+
+// Distância mostrada em cada firma quando a lista está ordenada por
+// proximidade — é o que torna a ordem legível para o agente. Sem coordenadas
+// devolve o rótulo que agrupa essas firmas no fim da lista.
+const formatFirmaDistance = (km: number | null) =>
+  km === null ? 'sem localização' : km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 
 const getRiskStyles = (risk: 'critical' | 'medium' | 'normal' | 'none') => {
   switch (risk) {
@@ -74,7 +83,27 @@ export default function FirmasList() {
   const [showGroupModal, setShowGroupModal] = useState(false);
   const navigate = useNavigate();
   const grants = useAppGrants();
+
+  // Proximidade por omissão: com posição conhecida, a lista abre da firma mais
+  // próxima para a mais distante. O agente pode voltar a alfabética, e sem fix
+  // a ordenação cai automaticamente para alfabética (ver o memo abaixo).
+  const [sortMode, setSortMode] = useState<'proximity' | 'name'>('proximity');
+  const { location: coords } = useGeoLocation();
+
+  const distanceOf = React.useCallback(
+    (firma: { geolocation?: { lat: number; lng: number } | null }) => {
+      if (!coords) return null;
+      const geo = firma.geolocation;
+      if (geo?.lat == null || geo?.lng == null) return null;
+      return calculateDistanceKm(coords, { lat: geo.lat, lng: geo.lng });
+    },
+    [coords],
+  );
   const canCreateOperator = grants.includes('app:transaction:operator:create');
+
+  // A lista só mostra distâncias quando está de facto ordenada por elas —
+  // exibi-las em ordem alfabética seria ruído.
+  const byProximityView = sortMode === 'proximity' && !!coords;
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -94,58 +123,17 @@ export default function FirmasList() {
       const allVisitas = await db.visitas.toArray();
       const allInfracoes = await db.infracoes.toArray();
 
-      // 2. Agrupar visitas por firmaId
-      const visitasMap = new Map<string, typeof allVisitas>();
-      allVisitas.forEach(v => {
-        const arr = visitasMap.get(v.firmaId) || [];
-        arr.push(v);
-        visitasMap.set(v.firmaId, arr);
-      });
+      // 2/3/4. Classificar cada firma pela sua situação actual. A lógica vive
+      // em lib/firmaRisk para ser partilhada com o radar de operadores
+      // próximos no Dashboard — duplicá-la garantiria divergência à primeira
+      // alteração das regras.
+      const visitasMap = groupVisitasByFirma(allVisitas);
+      const infracoesCountMap = buildInfracoesCountByVisita(allInfracoes);
 
-      // 3. Contar infrações por visitaId
-      const infracoesCountMap = new Map<string, number>();
-      allInfracoes.forEach(inf => {
-        if (inf.visitaId) {
-          infracoesCountMap.set(inf.visitaId, (infracoesCountMap.get(inf.visitaId) || 0) + 1);
-        }
-      });
-
-      // 4. Mapear cada firma com as suas estatísticas e classificação de risco
-      const processedFirmas = allFirmas.map(firma => {
-        const visitas = visitasMap.get(firma.id!) || [];
-        const numVisitas = visitas.length;
-        
-        let numInfracoes = 0;
-        let hasInfracoesVisitas = false;
-        let hasInconformesVisitas = false;
-        let hasRegularizadoVisitas = false;
-
-        visitas.forEach(v => {
-          numInfracoes += infracoesCountMap.get(v.id!) || 0;
-          if (v.status === 'Infrações') hasInfracoesVisitas = true;
-          else if (v.status === 'Inconformes') hasInconformesVisitas = true;
-          // 'Recomendações' não tem infrações nem inconformidades — conta como
-          // "sem risco" tal como 'Regularizado' para efeitos de classificação.
-          else if (v.status === 'Regularizado' || v.status === 'Recomendações') hasRegularizadoVisitas = true;
-        });
-
-        // Determinar nível de risco/importância
-        let risk: 'critical' | 'medium' | 'normal' | 'none' = 'none';
-        if (hasInfracoesVisitas || numInfracoes > 0) {
-          risk = 'critical';
-        } else if (hasInconformesVisitas) {
-          risk = 'medium';
-        } else if (hasRegularizadoVisitas) {
-          risk = 'normal';
-        }
-
-        return {
-          ...firma,
-          numVisitas,
-          numInfracoes,
-          risk
-        };
-      });
+      const processedFirmas = allFirmas.map(firma => ({
+        ...firma,
+        ...classifyFirmaRisk(visitasMap.get(firma.id!) || [], infracoesCountMap),
+      }));
 
       // 5. Computar contagens e opções para as abas com base na dimensão selecionada
       const counts: Record<string, number> = { all: processedFirmas.length };
@@ -227,7 +215,28 @@ export default function FirmasList() {
         }
       }
 
-      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      // Ordenação por proximidade quando há posição do agente e o modo está
+      // activo. Firmas sem coordenadas não têm distância, logo não têm lugar
+      // natural nesta ordem: vão para o fim, agrupadas e assinaladas na lista —
+      // continuam acessíveis, e a etiqueta serve de incentivo a mapeá-las.
+      //
+      // Sem fix, cai para alfabética em vez de produzir uma ordem arbitrária.
+      const byProximity = sortMode === 'proximity' && coords;
+
+      if (byProximity) {
+        filtered.sort((a, b) => {
+          const da = distanceOf(a);
+          const db_ = distanceOf(b);
+          if (da === null && db_ === null) {
+            return (a.name || '').localeCompare(b.name || '');
+          }
+          if (da === null) return 1;
+          if (db_ === null) return -1;
+          return da - db_;
+        });
+      } else {
+        filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
 
       const totalCount = filtered.length;
       const paginatedList = filtered.slice(0, visibleCount);
@@ -239,7 +248,7 @@ export default function FirmasList() {
         allCounts: counts
       };
     },
-    [search, visibleCount, groupDimension, activeTab]
+    [search, visibleCount, groupDimension, activeTab, sortMode, coords, distanceOf]
   );
 
   const firmas = result?.items || [];
@@ -288,6 +297,37 @@ export default function FirmasList() {
             </span>
           </span>
         </button>
+
+        {/* Ordenação. Só aparece com posição conhecida: sem fix não há
+            proximidade que ordenar, e a lista já está em alfabética. */}
+        {coords && (
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
+            <button
+              onClick={() => setSortMode('proximity')}
+              title="Ordenar da firma mais próxima para a mais distante"
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                sortMode === 'proximity'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-400',
+              )}
+            >
+              <Navigation className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setSortMode('name')}
+              title="Ordenar alfabeticamente"
+              className={cn(
+                'p-2 rounded-lg transition-colors text-[10px] font-black',
+                sortMode === 'name'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-400',
+              )}
+            >
+              AZ
+            </button>
+          </div>
+        )}
 
         {/* Toggle lista/grid */}
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 shrink-0">
@@ -473,6 +513,11 @@ export default function FirmasList() {
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
                     <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate max-w-[160px]">{firma.address || firma.district || 'Sem Endereço'}</span>
+                    {byProximityView && (
+                      <span className="ml-auto shrink-0 font-bold text-indigo-600 dark:text-indigo-400">
+                        {formatFirmaDistance(distanceOf(firma))}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5">

@@ -165,6 +165,28 @@ class EncryptedWhereClause {
   }
 }
 
+// Notificado após qualquer escrita, para invalidar caches derivadas destas
+// tabelas (ver lib/operadoresCache). Registado aqui, num único ponto, em vez de
+// em cada local de escrita — assim nenhuma escrita futura pode esquecer-se de o
+// fazer.
+type WriteListener = () => void;
+const writeListeners = new Set<WriteListener>();
+
+export function onDatabaseWrite(listener: WriteListener): () => void {
+  writeListeners.add(listener);
+  return () => writeListeners.delete(listener);
+}
+
+function notifyWrite() {
+  writeListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Um consumidor a falhar não pode impedir os restantes nem a escrita.
+    }
+  });
+}
+
 class EncryptedTable {
   constructor(
     private table: any,
@@ -204,32 +226,42 @@ class EncryptedTable {
     const key = getActiveKey();
     if (!key) throw new Error('Base de dados bloqueada.');
     const encrypted = await this.encrypt(obj, key);
-    return this.table.add(encrypted);
+    const result = await this.table.add(encrypted);
+    notifyWrite();
+    return result;
   }
 
   async put(obj: any) {
     const key = getActiveKey();
     if (!key) throw new Error('Base de dados bloqueada.');
     const encrypted = await this.encrypt(obj, key);
-    return this.table.put(encrypted);
+    const result = await this.table.put(encrypted);
+    notifyWrite();
+    return result;
   }
 
   async bulkAdd(arr: any[]) {
     const key = getActiveKey();
     if (!key) throw new Error('Base de dados bloqueada.');
     const encryptedArr = await Promise.all(arr.map(obj => this.encrypt(obj, key)));
-    return this.table.bulkAdd(encryptedArr);
+    const result = await this.table.bulkAdd(encryptedArr);
+    notifyWrite();
+    return result;
   }
 
   async bulkPut(arr: any[]) {
     const key = getActiveKey();
     if (!key) throw new Error('Base de dados bloqueada.');
     const encryptedArr = await Promise.all(arr.map(obj => this.encrypt(obj, key)));
-    return this.table.bulkPut(encryptedArr);
+    const result = await this.table.bulkPut(encryptedArr);
+    notifyWrite();
+    return result;
   }
 
   async bulkDelete(keys: any[]) {
-    return this.table.bulkDelete(keys);
+    const result = await this.table.bulkDelete(keys);
+    notifyWrite();
+    return result;
   }
 
   async get(id: any) {
@@ -271,7 +303,9 @@ class EncryptedTable {
     }
     rawUpdate.ciphertext = encrypted.ciphertext;
 
-    return this.table.update(id, rawUpdate);
+    const result = await this.table.update(id, rawUpdate);
+    notifyWrite();
+    return result;
   }
 
   where(index: string) {
