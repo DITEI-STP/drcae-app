@@ -39,22 +39,66 @@ export const RISK_PRESENTATION: Record<FirmaRisk, RiskPresentation> = {
   },
 };
 
-// O operador tem recomendações de fiscalizações anteriores ainda sem resposta?
+export interface RecomendacaoEmAberto {
+  text: string;
+  visitaOrigemId: string;
+  dataOrigem: string;
+  equipaOrigem: string[];
+}
+
+// Recomendações emitidas em fiscalizações anteriores que continuam por resolver.
 //
-// "Sem resposta" é `atendida` por preencher — o estado que a app apresenta como
-// "Pendente" em VisitaDetail. As marcadas como "Não atendida" ficam de fora:
-// já tiveram resposta, ainda que negativa, e essa gravidade reflecte-se na
-// classificação de risco do operador.
+// O modelo tem duas metades e é preciso cruzá-las:
+//   visita.recomendacoes           o que foi **emitido** nessa fiscalização
+//   visita.recomendacoesHistoricas as **respostas**, dadas em fiscalizações
+//                                  posteriores, ao que ficou de trás
 //
+// Percorre-se por ordem cronológica: cada recomendação emitida entra em aberto,
+// e uma avaliação posterior marcada como atendida fecha-a. Fica em aberto tudo
+// o que nunca foi atendido — quer nunca tenha sido avaliado, quer tenha sido
+// avaliado como não atendido.
+//
+// A chave cruza a visita de origem com o texto, porque é assim que a resposta
+// se liga à recomendação que lhe deu causa.
+export function recomendacoesEmAberto(visitas: Visita[]): RecomendacaoEmAberto[] {
+  const porResolver = new Map<string, RecomendacaoEmAberto & { atendida: boolean }>();
+
+  const cronologicas = [...visitas].sort((a, b) => {
+    const dataA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
+    const dataB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+    return dataA - dataB;
+  });
+
+  for (const visita of cronologicas) {
+    for (const texto of visita.recomendacoes ?? []) {
+      porResolver.set(`${visita.id}-${texto}`, {
+        text: texto,
+        visitaOrigemId: visita.id!,
+        dataOrigem: visita.date,
+        equipaOrigem: visita.technicians || [],
+        atendida: false,
+      });
+    }
+
+    for (const resposta of visita.recomendacoesHistoricas ?? []) {
+      const chave = `${resposta.visitaOrigemId}-${resposta.text}`;
+      const actual = porResolver.get(chave);
+      if (actual && resposta.atendida != null) {
+        porResolver.set(chave, { ...actual, atendida: resposta.atendida });
+      }
+    }
+  }
+
+  return [...porResolver.values()]
+    .filter((recomendacao) => !recomendacao.atendida)
+    .sort((a, b) => new Date(b.dataOrigem).getTime() - new Date(a.dataOrigem).getTime());
+}
+
 // Alimenta a pulsação do ponto no radar (ver NearbyOperatorsRadar), que assinala
-// "há aqui algo por responder" sem substituir a cor da situação — as duas
+// "há aqui algo por averiguar" sem substituir a cor da situação — as duas
 // informações são ortogonais e devem poder ser lidas em conjunto.
 export function hasPendingRecommendations(visitas: Visita[]): boolean {
-  return visitas.some((visita) =>
-    (visita.recomendacoesHistoricas ?? []).some(
-      (recomendacao) => recomendacao.atendida == null,
-    ),
-  );
+  return recomendacoesEmAberto(visitas).length > 0;
 }
 
 // Índice de infracções por visita, construído uma vez e reutilizado para todas

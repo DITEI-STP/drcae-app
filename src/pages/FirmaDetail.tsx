@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
+import { recomendacoesEmAberto } from '../lib/firmaRisk';
 import { ArrowLeft, MapPin, Phone, Mail, User, ShieldAlert, Compass, Check, Crosshair, AlertTriangle, Map as MapIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast, customAlert } from '../lib/notifications';
@@ -38,74 +39,12 @@ export default function FirmaDetail() {
     return allInfracoes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [visitas]);
 
-  const recomendacoesAberto = useLiveQuery(async () => {
-    if (!visitas || visitas.length === 0) return [];
-    
-    // Sort visits by date/time ascending to trace chronologically
-    const sortedVisitas = [...visitas].sort((a, b) => {
-      const dateA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
-      const dateB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
-      return dateA - dateB;
-    });
-
-    // Map to track the status of each recommendation: key is "visitaId-text"
-    const recMap = new Map<string, {
-      text: string;
-      visitaOrigemId: string;
-      dataOrigem: string;
-      equipaOrigem: string[];
-      atendida: boolean;
-    }>();
-
-    for (const v of sortedVisitas) {
-      // 1. Process new recommendations issued in this visit
-      if (v.recomendacoes) {
-        for (const rec of v.recomendacoes) {
-          const key = `${v.id}-${rec}`;
-          recMap.set(key, {
-            text: rec,
-            visitaOrigemId: v.id!,
-            dataOrigem: v.date,
-            equipaOrigem: v.technicians || [],
-            atendida: false
-          });
-        }
-      }
-
-      // 2. Process evaluations of past recommendations in this visit
-      if (v.recomendacoesHistoricas) {
-        for (const rh of v.recomendacoesHistoricas) {
-          const key = `${rh.visitaOrigemId}-${rh.text}`;
-          if (recMap.has(key)) {
-            const current = recMap.get(key)!;
-            if (rh.atendida !== undefined && rh.atendida !== null) {
-              recMap.set(key, {
-                ...current,
-                atendida: rh.atendida
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Filter to only return the ones that are NOT resolved (atendida === false)
-    const recs: {
-      text: string;
-      visitaOrigemId: string;
-      dataOrigem: string;
-      equipaOrigem: string[];
-      atendida: boolean;
-    }[] = [];
-
-    recMap.forEach((val) => {
-      recs.push(val);
-    });
-
-    return recs
-      .filter(r => !r.atendida)
-      .sort((a, b) => new Date(b.dataOrigem).getTime() - new Date(a.dataOrigem).getTime());
-  }, [visitas]);
+  // Recomendações por resolver — a travessia cronológica que cruza emitidas com
+  // respostas vive em lib/firmaRisk, partilhada com o radar do Dashboard.
+  const recomendacoesAberto = useMemo(
+    () => recomendacoesEmAberto(visitas ?? []),
+    [visitas],
+  );
 
   const handleCapturePonto = () => {
     if (!navigator.geolocation) {

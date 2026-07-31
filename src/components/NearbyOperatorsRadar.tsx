@@ -216,9 +216,9 @@ export default function NearbyOperatorsRadar() {
                     {/* Alvo de toque generoso, invisível: os pontos são
                         pequenos demais para um dedo. */}
                     <circle cx={x} cy={y} r={10} fill="transparent" />
-                  {/* Halo pulsante para recomendações por responder. Fica por
+                  {/* Halo pulsante para recomendações por averiguar. Fica por
                       baixo do ponto para não lhe alterar a cor: a pulsação diz
-                      "há algo pendente", a cor continua a dizer a situação. */}
+                      "há algo por averiguar", a cor continua a dizer a situação. */}
                   {operator.pendingRecommendations && (
                     <circle
                       cx={x}
@@ -276,7 +276,7 @@ export default function NearbyOperatorsRadar() {
                         {RISK_PRESENTATION[operator.risk].label}
                         {operator.pendingRecommendations && (
                           <span className="text-blue-500 dark:text-blue-400">
-                            {' · recomendação por responder'}
+                            {' · recomendações por averiguar'}
                           </span>
                         )}
                       </span>
