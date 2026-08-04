@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -10,6 +10,9 @@ import { triggerFullSyncIfReachable } from '../lib/sync';
 import { tecnicoNames } from '../lib/inspectionModel';
 import { semRascunhos } from '../lib/visitaDraft';
 import Avatar from '../components/Avatar';
+import { decidirEdicaoDePonto, GEO_UPDATE_GRANT } from '../lib/geoPermissao';
+import { hasAppGrant } from '../lib/grants';
+import { useGeoLocation } from '../lib/geo';
 
 export default function FirmaDetail() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +21,9 @@ export default function FirmaDetail() {
   const [showPontoModal, setShowPontoModal] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<string>('firma'); // 'firma' or activity id
   const [isCapturing, setIsCapturing] = useState(false);
+  // Mesma fonte que o resto do app: posição nativa do shell primeiro, browser
+  // como recurso, e a melhor leitura recente em cache.
+  const { location: localizacao, error: erroGeo, refresh: refreshGeo } = useGeoLocation();
   const [successMsg, setSuccessMsg] = useState('');
 
   const firma = useLiveQuery(() => db.firmas.get(id!), [id]);
@@ -26,15 +32,11 @@ export default function FirmaDetail() {
     [id],
   );
 
-  const canEditFirma = () => {
-    if (!firma) return false;
-    if (!firma.synced) return true;
-    if (firma.createdAt) {
-      const oneHourMs = 60 * 60 * 1000;
-      return (Date.now() - firma.createdAt) < oneHourMs;
-    }
-    return false;
-  };
+  // Quem pode marcar ou corrigir o ponto — ver `lib/geoPermissao.ts`. A regra
+  // anterior era o tempo desde o registo, e deixava sem solução o caso mais
+  // comum no terreno: uma firma antiga que nunca teve coordenada.
+  const podeAlterarPontos = hasAppGrant(GEO_UPDATE_GRANT);
+  const decisaoDaFirma = decidirEdicaoDePonto(firma?.geolocation, podeAlterarPontos);
   const infracoes = useLiveQuery(async () => {
     if (!visitas) return [];
     let allInfracoes: any[] = [];
@@ -52,53 +54,76 @@ export default function FirmaDetail() {
     [visitas],
   );
 
+  /**
+   * Grava o ponto escolhido no alvo (firma ou actividade).
+   *
+   * Separado da obtenção da posição porque são duas coisas: onde estamos, e a
+   * que se aplica. A posição vem sempre de `useGeoLocation` — dentro do
+   * `drcae-webview`, `navigator.geolocation` não responde (a WebView não tem o
+   * bridge de permissões do Android), e era essa a chamada directa que ficava a
+   * rodar até dar erro. O hook lê a posição **nativa** publicada pelo shell e
+   * só usa o browser como recurso.
+   */
+  const gravarPonto = async (ponto: { lat: number; lng: number }) => {
+    if (!firma) return;
+    if (selectedTarget === 'firma') {
+      await db.firmas.update(firma.id!, {
+        geolocation: { lat: ponto.lat, lng: ponto.lng },
+        synced: false,
+      });
+    } else {
+      const updatedAtividades = (firma.atividades || []).map(ativ =>
+        ativ.id === selectedTarget
+          ? { ...ativ, geolocation: { lat: ponto.lat, lng: ponto.lng } }
+          : ativ,
+      );
+      await db.firmas.update(firma.id!, { atividades: updatedAtividades, synced: false });
+    }
+
+    setIsCapturing(false);
+    setSuccessMsg('Coordenadas de GPS gravadas com sucesso!');
+    triggerFullSyncIfReachable().catch((err) => {
+      console.warn('[drcae] Sync imediato após coordenadas falhou; registo ficará pendente.', err);
+    });
+    setTimeout(() => {
+      setShowPontoModal(false);
+      setSuccessMsg('');
+    }, 1500);
+  };
+
   const handleCapturePonto = () => {
-    if (!navigator.geolocation) {
-      toast.error('Geolocalização não é suportada por este dispositivo.');
+    setSuccessMsg('');
+    // Com posição já conhecida, grava-se de imediato: o hook mantém a melhor
+    // leitura recente, e fazer o agente esperar por uma nova só para confirmar
+    // o que já se sabe é o que fazia isto parecer avariado.
+    if (localizacao) {
+      void gravarPonto(localizacao);
       return;
     }
     setIsCapturing(true);
-    setSuccessMsg('');
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        if (!firma) return;
-
-        if (selectedTarget === 'firma') {
-          await db.firmas.update(firma.id!, {
-            geolocation: { lat: latitude, lng: longitude },
-            synced: false
-          });
-        } else {
-          const updatedAtividades = (firma.atividades || []).map(ativ => {
-            if (ativ.id === selectedTarget) {
-              return { ...ativ, geolocation: { lat: latitude, lng: longitude } };
-            }
-            return ativ;
-          });
-          await db.firmas.update(firma.id!, {
-            atividades: updatedAtividades,
-            synced: false
-          });
-        }
-
-        setIsCapturing(false);
-        setSuccessMsg('Coordenadas de GPS gravadas com sucesso!');
-        triggerFullSyncIfReachable().catch((err) => {
-          console.warn('[drcae] Sync imediato após coordenadas falhou; registo ficará pendente.', err);
-        });
-        setTimeout(() => {
-          setShowPontoModal(false);
-          setSuccessMsg('');
-        }, 1500);
-      },
-      (error) => {
-        setIsCapturing(false);
-        toast.error('Erro ao capturar as coordenadas de GPS. Por favor, conceda permissão de localização.');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    refreshGeo();
   };
+
+  // Resolve a captura que ficou à espera de sinal.
+  useEffect(() => {
+    if (!isCapturing) return;
+    if (localizacao) {
+      void gravarPonto(localizacao);
+      return;
+    }
+    // Sem posição ao fim de meio minuto, diz-se o que se passa em vez de
+    // continuar a rodar: dentro de um edifício o sinal pode nunca chegar.
+    const limite = setTimeout(() => {
+      setIsCapturing(false);
+      toast.error(
+        erroGeo
+          ? `Não foi possível obter a localização: ${erroGeo}`
+          : 'Sem sinal de GPS suficiente. Saia para um espaço aberto e tente novamente.',
+      );
+    }, 30000);
+    return () => clearTimeout(limite);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCapturing, localizacao, erroGeo]);
 
   let nivelRecorrencia = 'Limpo';
   let badgeColor = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400';
@@ -180,8 +205,8 @@ export default function FirmaDetail() {
              </button>
              <button 
                 onClick={() => {
-                   if (!canEditFirma()) {
-                      customAlert.warning('Operação Bloqueada', 'Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
+                   if (!decisaoDaFirma.permitido) {
+                      customAlert.warning('Alteração não permitida', decisaoDaFirma.motivo ?? '');
                       return;
                    }
                    setSelectedTarget('firma');
@@ -189,14 +214,14 @@ export default function FirmaDetail() {
                 }}
                 className={cn(
                    "py-3 rounded-xl text-xs font-bold border transition-all uppercase tracking-wide flex items-center justify-center gap-2 cursor-pointer",
-                   canEditFirma() 
+                   decisaoDaFirma.permitido
                      ? "bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border-indigo-100 dark:border-indigo-900/30 shadow-sm"
                      : "bg-slate-100 dark:bg-slate-850 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-75"
                 )}
-                title={canEditFirma() ? "Atualizar ponto de GPS" : "Edição bloqueada"}
+                title={decisaoDaFirma.permitido ? "Marcar ou corrigir o ponto de GPS" : decisaoDaFirma.motivo}
               >
                 <Crosshair className="w-4 h-4" />
-                Atualizar Ponto
+                {decisaoDaFirma.accao === 'marcar' ? 'Marcar Ponto' : 'Atualizar Ponto'}
              </button>
 
              <button
@@ -272,10 +297,15 @@ export default function FirmaDetail() {
                                <span>Sem ponto GPS específico</span>
                             </div>
                          )}
+                         {(() => {
+                         // Cada actividade decide pelo **seu** ponto: uma firma
+                         // marcada não impede marcar o armazém que ainda não está.
+                         const decisao = decidirEdicaoDePonto(ativ.geolocation, podeAlterarPontos);
+                         return (
                          <button 
                             onClick={() => {
-                               if (!canEditFirma()) {
-                                  customAlert.warning('Operação Bloqueada', 'Esta firma foi registada e sincronizada com o servidor há mais de 1 hora. A alteração de dados de geolocalização está permanentemente bloqueada.');
+                               if (!decisao.permitido) {
+                                  customAlert.warning('Alteração não permitida', decisao.motivo ?? '');
                                   return;
                                }
                                setSelectedTarget(ativ.id || 'firma');
@@ -283,15 +313,17 @@ export default function FirmaDetail() {
                             }}
                             className={cn(
                                "text-[11px] font-bold py-1 px-2 rounded transition-colors flex items-center gap-1 cursor-pointer",
-                               canEditFirma()
+                               decisao.permitido
                                  ? "text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
                                  : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60"
                             )}
-                            title={canEditFirma() ? "Editar geolocalização desta atividade" : "Edição bloqueada"}
+                            title={decisao.permitido ? "Marcar ou corrigir o ponto desta actividade" : decisao.motivo}
                          >
                             <Crosshair className="w-3 h-3" />
-                            {ativ.geolocation ? 'Alterar GPS' : 'Marcar GPS'}
+                            {decisao.accao === 'marcar' ? 'Marcar GPS' : 'Alterar GPS'}
                          </button>
+                         );
+                         })()}
                       </div>
                    </div>
                 ))}
@@ -453,13 +485,36 @@ export default function FirmaDetail() {
                         ))}
                      </div>
 
+                     {/* A posição que vai ser gravada, antes de se gravar: o
+                         agente vê a precisão e decide se aceita — um ponto com
+                         ±800 m marca a rua errada e ninguém dava por isso. */}
+                     <div className="mb-3 text-center">
+                        {localizacao ? (
+                           <p className="text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                              {localizacao.lat.toFixed(6)}, {localizacao.lng.toFixed(6)}
+                              {localizacao.accuracy != null && (
+                                 <span className={cn(
+                                    'ml-2 font-sans font-bold',
+                                    localizacao.accuracy <= 30 ? 'text-emerald-600' : 'text-amber-600',
+                                 )}>
+                                    ±{Math.round(localizacao.accuracy)} m
+                                 </span>
+                              )}
+                           </p>
+                        ) : (
+                           <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              Ainda sem posição conhecida neste dispositivo.
+                           </p>
+                        )}
+                     </div>
+
                      <button 
                         onClick={handleCapturePonto}
                         disabled={isCapturing}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none text-sm tracking-wide uppercase transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none text-sm tracking-wide uppercase transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                      >
                         <Compass className={cn("w-4 h-4", isCapturing && "animate-spin")} />
-                        {isCapturing ? 'Obtendo Sinal de Satélite...' : 'Capturar Coordenadas Actuais'}
+                        {isCapturing ? 'À procura de sinal...' : localizacao ? 'Gravar Esta Posição' : 'Capturar Coordenadas Actuais'}
                      </button>
                   </>
                )}
