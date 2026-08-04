@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db, onDatabaseWrite, type Firma, type Visita, type Infracao } from '../db/db';
+import { semRascunhos } from './visitaDraft';
 
 // Cache em memória dos operadores e do histórico já desencriptados.
 //
@@ -30,7 +31,7 @@ const listeners = new Set<(snapshot: OperadoresSnapshot) => void>();
 async function readAll(): Promise<OperadoresSnapshot> {
   const [firmas, visitas, infracoes] = await Promise.all([
     db.firmas.toArray(),
-    db.visitas.toArray(),
+    db.visitas.toArray().then(semRascunhos),
     db.infracoes.toArray(),
   ]);
   return { firmas, visitas, infracoes };

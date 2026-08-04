@@ -16,6 +16,13 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { RecomendacaoHistorica, ProdutoPreco } from '../db/db';
 import { computeRecidivism, recidivismLabel } from '../lib/recidivism';
+import { clearReturnAnchor, getReturnAnchor } from '../lib/returnAnchor';
+import { tecnicoNames } from '../lib/inspectionModel';
+import { semRascunhos } from '../lib/visitaDraft';
+import ApreensoesSection from './visita-detalhe/ApreensoesSection';
+import VideoThumb from '../components/VideoThumb';
+import EvidenciaPreview, { type EvidenciaSeleccionada } from '../components/EvidenciaPreview';
+import ConstatacoesSection from './visita-detalhe/ConstatacoesSection';
 
 // Leaflet icon fix
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -270,7 +277,7 @@ function HistoricoSection({ items }: { items: RecomendacaoHistorica[] }) {
                   <span className="text-[10px] font-mono text-slate-400">{rec.dataOrigem}</span>
                 )}
                 {rec.equipaOrigem?.length > 0 && (
-                  <span className="text-[10px] text-slate-400">• {rec.equipaOrigem.join(', ')}</span>
+                  <span className="text-[10px] text-slate-400">• {tecnicoNames(rec.equipaOrigem).join(', ')}</span>
                 )}
                 <span className={cn(
                   'ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full',
@@ -295,16 +302,24 @@ export default function VisitaDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  const [returnAnchor, setReturnAnchor] = useState(() => getReturnAnchor());
+  useEffect(() => {
+    const sync = () => setReturnAnchor(getReturnAnchor());
+    window.addEventListener('drcae:return-anchor-changed', sync);
+    return () => window.removeEventListener('drcae:return-anchor-changed', sync);
+  }, []);
+
   const visita = useLiveQuery(() => db.visitas.get(id!), [id]);
   const firma = useLiveQuery(() => visita ? db.firmas.get(visita.firmaId) : undefined, [visita]);
   const infracoes = useLiveQuery(() => db.infracoes.where('visitaId').equals(id!).toArray(), [id]);
   const anexos = useLiveQuery(() => db.anexos.where('visitaId').equals(id!).toArray(), [id]);
+  const [preview, setPreview] = useState<EvidenciaSeleccionada | null>(null);
 
   // Histórico de infrações da firma, usado para classificar cada infração
   // desta visita em incidente / reincidente / multi-reincidente.
   const recidivismByInfracaoId = useLiveQuery(async () => {
     if (!visita?.firmaId) return new Map<string, number>();
-    const firmaVisitas = await db.visitas.where('firmaId').equals(visita.firmaId).toArray();
+    const firmaVisitas = semRascunhos(await db.visitas.where('firmaId').equals(visita.firmaId).toArray());
     const sortKeyByVisitaId = new Map(
       firmaVisitas.map(v => [v.id!, v.createdAt ?? Date.parse(`${v.date}T${v.time || '00:00'}`) ?? 0])
     );
@@ -377,7 +392,7 @@ export default function VisitaDetail() {
     setEditNotes(visita.notes || '');
     setEditStatus(visita.status);
     setEditAtividade(visita.atividadeEconomica || '');
-    setEditTechnicians(visita.technicians.join(', '));
+    setEditTechnicians(tecnicoNames(visita.technicians).join(', '));
     setShowEditModal(true);
   };
 
@@ -462,6 +477,21 @@ export default function VisitaDetail() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar pb-10">
+
+        {/* Retorno ao registo em curso. O agente chegou aqui a partir do
+            histórico de uma infracção, com uma nova fiscalização a meio: o
+            caminho de volta é explícito, e é sempre ao formulário — nunca a
+            uma pilha de detalhes por desfazer. */}
+        {returnAnchor && (
+          <button
+            type="button"
+            onClick={() => { clearReturnAnchor(); navigate(returnAnchor.path); }}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wide transition-colors shadow-lg shadow-indigo-200/50 dark:shadow-none"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {returnAnchor.label}
+          </button>
+        )}
 
         {/* Audit trail alert */}
         {canEdit() ? (
@@ -548,10 +578,10 @@ export default function VisitaDetail() {
             <div className="flex items-start gap-3">
               <User className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
               <div className="flex flex-wrap gap-3">
-                {visita.technicians.map(t => {
+                {tecnicoNames(visita.technicians).map((t, i) => {
                   const { initials, gradient } = getMemberAvatar(t);
                   return (
-                    <div key={t} className="flex flex-col items-center gap-1">
+                    <div key={`${t}-${i}`} className="flex flex-col items-center gap-1">
                       <div className={cn('w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-black shadow-sm bg-gradient-to-br', gradient)}>
                         {initials}
                       </div>
@@ -625,6 +655,12 @@ export default function VisitaDetail() {
         <HistoricoSection items={recomendacoesHistoricas} />
 
         {/* Cesta Básica */}
+        <ConstatacoesSection visitaId={visita.id!} />
+
+        <EvidenciaPreview evidencia={preview} onFechar={() => setPreview(null)} />
+
+        <ApreensoesSection visitaId={visita.id!} />
+
         <ProdutosSection produtos={produtos} />
 
         {/* Notas e Anexos */}
@@ -655,9 +691,24 @@ export default function VisitaDetail() {
                 return (
                   <div key={anx.id} className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     {isImage && imgSrc ? (
-                      <img src={imgSrc} alt={anx.fileName} className="w-full aspect-square object-cover rounded-lg" />
+                      <button
+                        type="button"
+                        onClick={() => setPreview({ url: imgSrc, type: anx.fileType, name: anx.fileName })}
+                        className="w-full aspect-square rounded-lg overflow-hidden"
+                      >
+                        <img src={imgSrc} alt={anx.fileName} className="w-full h-full object-cover" />
+                      </button>
                     ) : isVideo && imgSrc ? (
-                      <video src={imgSrc} controls className="w-full aspect-square object-cover rounded-lg bg-black" />
+                      /* Miniatura com o fotograma extraído, e não um `<video>`
+                         embutido: assim o detalhe não descodifica N vídeos ao
+                         abrir, e o leitor aparece só quando o agente o pede. */
+                      <button
+                        type="button"
+                        onClick={() => setPreview({ url: imgSrc, type: anx.fileType, name: anx.fileName })}
+                        className="w-full aspect-square rounded-lg overflow-hidden"
+                      >
+                        <VideoThumb url={imgSrc} anexoId={anx.id} />
+                      </button>
                     ) : (
                       <div className="w-full aspect-square bg-blue-50 dark:bg-blue-950/20 rounded-lg flex flex-col items-center justify-center text-blue-500 gap-2 border border-dashed border-blue-200 dark:border-blue-900/30">
                         <FileText className="w-8 h-8" />

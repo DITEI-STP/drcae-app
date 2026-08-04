@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Radar as RadarIcon, MapPinOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useGeoLocation } from '../lib/geo';
-import { useDeviceHeading } from '../lib/deviceHeading';
+import { useDeviceHeading, useUnwrappedHeading } from '../lib/deviceHeading';
 import { useOperadores } from '../lib/operadoresCache';
 import { calculateDistanceKm, calculateBearing } from '../lib/routing';
 import { hasPendingRecommendations } from '../lib/firmaRisk';
@@ -31,6 +31,11 @@ const CENTER = SIZE / 2;
 const MAX_RADIUS = 88;
 const RINGS = 3;
 
+// Partilhada pelo terreno e pelo rótulo do norte: as duas rotações só se
+// mantêm coerentes durante a animação se percorrerem o mesmo tempo e a mesma
+// curva.
+const TERRAIN_TRANSITION = 'transform 220ms linear';
+
 function formatDistance(km: number): string {
   if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(km < 10 ? 1 : 0)} km`;
@@ -48,6 +53,17 @@ function formatDistance(km: number): string {
 // parado, que é justamente quando se consulta o radar. Sem bússola disponível,
 // fica fixo a norte.
 //
+// O rumo é consumido desenrolado (useUnwrappedHeading), porque o valor bruto
+// salta de 359 para 1 ao passar o norte e a transição CSS interpreta esse salto
+// como uma volta quase completa no sentido contrário.
+//
+// O azimute e o bearing dos operadores têm de partilhar o mesmo norte para o
+// terreno assentar: calculateBearing dá rumo geográfico, pelo que é o lado
+// nativo que converte o azimute magnético do sensor em geográfico
+// (DeviceHeadingSensor, via GeomagneticField). Num APK anterior a essa
+// conversão o desenho fica rodado pela declinação local — poucos graus em São
+// Tomé, e é a razão de DRCAE_WEBVIEW_MIN_VERSION passar a exigir o APK novo.
+//
 // A escala é adaptativa: os anéis ajustam-se ao operador mais distante dos que
 // são mostrados, e trazem sempre a distância escrita. Assim o radar é útil
 // tanto no centro da cidade (dezenas de operadores em 300 m) como no interior
@@ -57,6 +73,11 @@ export default function NearbyOperatorsRadar() {
   const navigate = useNavigate();
   const { location: coords } = useGeoLocation();
   const heading = useDeviceHeading();
+
+  // O desenho roda pelo rumo desenrolado, nunca pelo rumo bruto: o bruto salta
+  // de 359 para 1 ao passar o norte e a transição CSS lê esse salto como meia
+  // volta no sentido contrário (ver useUnwrappedHeading).
+  const angle = useUnwrappedHeading(heading) ?? 0;
 
   // Fonte partilhada com o Dashboard: ler as tabelas aqui outra vez duplicaria
   // ~1760 desencriptações por render (ver operadoresCache).
@@ -174,22 +195,25 @@ export default function NearbyOperatorsRadar() {
                 concêntricas: rodá-las não teria efeito visível e faria os seus
                 rótulos de distância virarem-se ao contrário. */}
             <g
-              transform={`rotate(${-(heading ?? 0)} ${CENTER} ${CENTER})`}
-              style={{ transition: 'transform 220ms linear' }}
+              transform={`rotate(${-angle} ${CENTER} ${CENTER})`}
+              style={{ transition: TERRAIN_TRANSITION }}
             >
               <line x1={CENTER} y1={CENTER - MAX_RADIUS} x2={CENTER} y2={CENTER + MAX_RADIUS}
                 className="stroke-slate-150 dark:stroke-slate-800" strokeWidth={1} />
               <line x1={CENTER - MAX_RADIUS} y1={CENTER} x2={CENTER + MAX_RADIUS} y2={CENTER}
                 className="stroke-slate-150 dark:stroke-slate-800" strokeWidth={1} />
               {/* O texto contra-roda para se manter direito e legível — só a
-                  sua posição acompanha o norte, não a inclinação. */}
+                  sua posição acompanha o norte, não a inclinação. Leva a mesma
+                  transição do grupo de propósito: sem ela o rótulo saltava
+                  para o ângulo final enquanto o terreno ainda ia a meio da
+                  animação, e via-se o "N" tombado durante cada rotação. */}
               <text
                 x={CENTER}
                 y={CENTER - MAX_RADIUS - 6}
                 textAnchor="middle"
-                transform={`rotate(${heading ?? 0} ${CENTER} ${CENTER - MAX_RADIUS - 6})`}
+                transform={`rotate(${angle} ${CENTER} ${CENTER - MAX_RADIUS - 6})`}
                 className={heading === null ? 'fill-slate-400 dark:fill-slate-500' : 'fill-blue-500'}
-                style={{ fontSize: 8, fontWeight: 800 }}
+                style={{ fontSize: 8, fontWeight: 800, transition: TERRAIN_TRANSITION }}
               >
                 N
               </text>

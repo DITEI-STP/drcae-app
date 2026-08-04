@@ -2,7 +2,16 @@
 <html lang="pt">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `interactive-widget=resizes-content`: com o teclado aberto, o layout
+         encolhe em vez de o teclado ficar por cima. Sem isto, o browser encolhe
+         só o viewport visual e os rodapés fixos dos formulários — onde vivem os
+         botões de avançar — ficam por baixo do teclado. Vale para browser e
+         PWA; dentro do `drcae-webview` quem levanta o conteúdo é o shell
+         nativo, que aplica os insets do IME (ver MainActivity.applyImeInsets). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#1d4ed8" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

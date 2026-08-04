@@ -7,6 +7,9 @@ import { ArrowLeft, MapPin, Phone, Mail, User, ShieldAlert, Compass, Check, Cros
 import { cn } from '../lib/utils';
 import { toast, customAlert } from '../lib/notifications';
 import { triggerFullSyncIfReachable } from '../lib/sync';
+import { tecnicoNames } from '../lib/inspectionModel';
+import { semRascunhos } from '../lib/visitaDraft';
+import Avatar from '../components/Avatar';
 
 export default function FirmaDetail() {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +21,10 @@ export default function FirmaDetail() {
   const [successMsg, setSuccessMsg] = useState('');
 
   const firma = useLiveQuery(() => db.firmas.get(id!), [id]);
-  const visitas = useLiveQuery(() => db.visitas.where('firmaId').equals(id!).toArray(), [id]);
+  const visitas = useLiveQuery(
+    async () => semRascunhos(await db.visitas.where('firmaId').equals(id!).toArray()),
+    [id],
+  );
 
   const canEditFirma = () => {
     if (!firma) return false;
@@ -128,9 +134,15 @@ export default function FirmaDetail() {
                 <span>GPS Ativo</span>
              </div>
           )}
-          <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-450 rounded-2xl flex items-center justify-center font-bold text-2xl mb-4 border border-blue-100 dark:border-blue-900/30 shadow-sm">
-            {(firma.name || '?').substring(0, 2).toUpperCase()}
-          </div>
+          {/* Logótipo por cima da sigla: sem rede, a sigla continua a
+              identificar a firma — ver `components/Avatar.tsx`. */}
+          <Avatar
+            nome={firma.name || '?'}
+            iniciais={(firma.name || '?').substring(0, 2).toUpperCase()}
+            url={firma.logo}
+            versao={firma.logoVersion}
+            className="w-16 h-16 !rounded-2xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-450 font-bold text-2xl mb-4 border border-blue-100 dark:border-blue-900/30 shadow-sm"
+          />
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{firma.name}</h2>
           <div className="mt-2 flex items-center justify-between">
              <span className={cn("text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded", badgeColor)}>
@@ -326,7 +338,7 @@ export default function FirmaDetail() {
                       <div className="flex-1">
                          <p className="font-semibold text-slate-800 dark:text-slate-100">{rec.text}</p>
                          <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-mono">
-                            Emitida em: {rec.dataOrigem} por {rec.equipaOrigem.join(', ')}
+                            Emitida em: {rec.dataOrigem} por {tecnicoNames(rec.equipaOrigem).join(', ')}
                          </p>
                       </div>
                    </li>

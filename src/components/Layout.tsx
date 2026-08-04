@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { DRCAE_APP_VERSION } from '../lib/version';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, UserRound, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid, PackageOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -10,9 +10,18 @@ import { useAppRealtime } from '../lib/realtime';
 import { checkServerReachable } from '../lib/serverReachability';
 import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
-import { toast } from '../lib/notifications';
+import { useBackIntent } from '../hooks/useBackIntent';
+import { exitAppToBackground, useKioskLocked } from '../lib/kioskState';
+import { confirmDialog, toast } from '../lib/notifications';
 import { useChatUnread } from '../lib/useChatUnread';
 import { useAppGrants } from '../lib/grants';
+import { isRascunho } from '../lib/visitaDraft';
+import Avatar from './Avatar';
+import {
+  OFFICER_INFO_UPDATED_EVENT,
+  readStoredOfficerInfo,
+  type StoredOfficerInfo,
+} from '../lib/avatarIdentity';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
@@ -24,12 +33,25 @@ const allNavItems = [
   { to: '/firmas', icon: Briefcase, label: 'Firmas', pageKey: 'app:page:operators' },
   { to: '/visitas', icon: ClipboardList, label: 'Visitas', pageKey: 'app:page:inspections' },
   { to: '/equipe', icon: Users, label: 'Equipe', pageKey: 'app:page:team' },
+  { to: '/utilizadores', icon: UserRound, label: 'Utilizadores', pageKey: 'app:page:users' },
+  { to: '/apreensoes', icon: PackageOpen, label: 'Apreensões', pageKey: 'app:page:seizures' },
   { to: '/mapa', icon: MapIcon, label: 'Mapa', pageKey: 'app:page:map' },
   { to: '/central', icon: RadioTower, label: 'Central', pageKey: 'app:page:central' },
   { to: '/settings', icon: Settings, label: 'Sistema', pageKey: 'app:page:settings' },
 ];
 
 const PRIMARY_NAV_COUNT = 4;
+
+// Conjunto mínimo de recuperação. Se a lista de grants chegar vazia — por
+// revogação real, por sessão que o servidor não resolveu, ou por cache
+// perdida — a barra não pode ficar sem nenhum destino: dentro do kiosque o
+// agente não tem browser nem forma de limpar dados, e ficava com o
+// dispositivo inutilizável. `Início` e `Sistema` dão-lhe um ecrã onde estar e
+// o caminho para sincronizar.
+const RECOVERY_NAV_KEYS = ['app:page:home', 'app:page:settings'];
+const recoveryNavItems = allNavItems.filter((item) =>
+  RECOVERY_NAV_KEYS.includes(item.pageKey),
+);
 
 interface LayoutProps {
   onLogout: () => void;
@@ -53,17 +75,29 @@ export default function Layout({ onLogout }: LayoutProps) {
   const [showFullscreenBtn, setShowFullscreenBtn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const officerInfo = (() => {
-    try { return JSON.parse(localStorage.getItem('drcae_officer_info') || 'null'); } catch { return null; }
-  })();
+  const [officerInfo, setOfficerInfo] = useState<StoredOfficerInfo | null>(readStoredOfficerInfo);
+  useEffect(() => {
+    const refresh = (event: Event) => {
+      const detail = (event as CustomEvent<StoredOfficerInfo>).detail;
+      setOfficerInfo(detail ?? readStoredOfficerInfo());
+    };
+    window.addEventListener(OFFICER_INFO_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(OFFICER_INFO_UPDATED_EVENT, refresh);
+  }, []);
   const officerName: string = officerInfo?.name ?? 'Agente';
   const officerInitials = getInitials(officerName);
+  // A fotografia vem no `login` (ver `resolveAvatar` no backend) e é guardada
+  // com as credenciais: é o que o app tem antes de qualquer sincronização.
+  const officerPhoto: string | undefined = officerInfo?.photoUrl;
+  const officerPhotoVersion: string | undefined = officerInfo?.photoVersion;
+  const officerAvatarOwnerUid: string | undefined = officerInfo?.avatarOwnerUid;
+  const officerAvatarVersion: string | undefined = officerInfo?.avatarVersion;
 
   // Contagem real de itens não sincronizados (não o audit log syncQueue)
   const unsyncedCount = useLiveQuery(async () => {
     const [f, v, i, a] = await Promise.all([
       db.firmas.filter(x => !x.synced).count(),
-      db.visitas.filter(x => !x.synced).count(),
+      db.visitas.filter(x => !x.synced && !isRascunho(x)).count(),
       db.infracoes.filter(x => !x.synced).count(),
       db.anexos.filter(x => !x.synced).count(),
     ]);
@@ -73,11 +107,45 @@ export default function Layout({ onLogout }: LayoutProps) {
   const navigate = useNavigate();
   const unreadChatCount = useChatUnread(isOnline);
 
+  const kioskLocked = useKioskLocked();
+
+  // Destino por omissão do botão «voltar» do Android.
+  //
+  // Vive aqui, e não em cada página, porque o `Layout` envolve todas as rotas e
+  // monta **antes** delas: fica no fundo da pilha LIFO do `useBackIntent`, pelo
+  // que qualquer formulário ou modal com handler próprio continua a ganhar. Só
+  // corre quando mais ninguém declarou interesse — que era exactamente o caso
+  // em que o botão não fazia nada.
+  //
+  // No início, oferece sair — mas só com `false` explícito do shell nativo.
+  // `null` é «não sei» (browser, ou APK anterior à injecção do estado) e conta
+  // como trancado: oferecer uma saída a um dispositivo em kiosque é o único
+  // erro aqui com consequência real. O nativo volta a validar de qualquer
+  // forma, pelo que esta verificação é conveniência, não segurança.
+  useBackIntent(() => {
+    if (location.pathname !== '/') { navigate('/'); return; }
+    if (kioskLocked !== false) return;
+
+    void (async () => {
+      const sair = await confirmDialog({
+        title: 'Sair da aplicação?',
+        message: 'A aplicação fica em segundo plano. A sincronização pendente continua e nada do que registou se perde.',
+        confirmLabel: 'Sair',
+        cancelLabel: 'Ficar',
+      });
+      if (sair) void exitAppToBackground();
+    })();
+  }, true);
+
   const grants = useAppGrants();
-  const visibleNavItems = useMemo(
+  const grantedNavItems = useMemo(
     () => allNavItems.filter((item) => grants.includes(item.pageKey)),
     [grants],
   );
+  // Sem destinos, cai no conjunto mínimo de recuperação em vez de desenhar uma
+  // barra vazia com um botão «Mais» que abre um painel sem nada.
+  const inRecoveryMode = grantedNavItems.length === 0;
+  const visibleNavItems = inRecoveryMode ? recoveryNavItems : grantedNavItems;
   const primaryNavItems = visibleNavItems.slice(0, PRIMARY_NAV_COUNT);
   const overflowNavItems = visibleNavItems.slice(PRIMARY_NAV_COUNT);
 
@@ -335,11 +403,19 @@ export default function Layout({ onLogout }: LayoutProps) {
 
           {/* Avatar mobile (initials) — clique → logout directo */}
           <button
-            className="md:hidden w-8 h-8 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center"
+            className="md:hidden"
             onClick={onLogout}
             title="Terminar Sessão"
           >
-            {officerInitials}
+            <Avatar
+              nome={officerName}
+              iniciais={officerInitials}
+              url={officerPhoto}
+              versao={officerPhotoVersion}
+              ownerUid={officerAvatarOwnerUid}
+              avatarVersion={officerAvatarVersion}
+              className="w-8 h-8 text-xs"
+            />
           </button>
 
           {/* Avatar desktop com dropdown */}
@@ -350,10 +426,18 @@ export default function Layout({ onLogout }: LayoutProps) {
             </div>
             <button
               onClick={() => setShowAvatarMenu(v => !v)}
-              className="w-10 h-10 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center hover:bg-indigo-500 transition-colors"
+              className="rounded-full hover:opacity-90 transition-opacity"
               title="Opções de conta"
             >
-              {officerInitials}
+              <Avatar
+                nome={officerName}
+                iniciais={officerInitials}
+                url={officerPhoto}
+                versao={officerPhotoVersion}
+                ownerUid={officerAvatarOwnerUid}
+                avatarVersion={officerAvatarVersion}
+                className="w-10 h-10 text-sm"
+              />
             </button>
 
             {showAvatarMenu && (
@@ -409,6 +493,27 @@ export default function Layout({ onLogout }: LayoutProps) {
         </main>
       </div>
 
+      {/* Aviso de recuperação — a lista de privilégios chegou vazia e a
+          navegação está reduzida ao mínimo. Dá ao agente a explicação e o
+          único gesto que a repõe, sem depender de encontrar Definições. */}
+      {inRecoveryMode && (
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+70px)] left-0 right-0 z-20 md:bottom-0 px-3 pb-2">
+          <div className="max-w-screen-md mx-auto bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900 rounded-xl px-3.5 py-2.5 flex items-center gap-3 shadow-lg">
+            <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <p className="text-[11px] font-medium text-amber-800 dark:text-amber-300 leading-snug flex-1">
+              Permissões não disponíveis — sincronize para as repor.
+            </p>
+            <button
+              onClick={syncData}
+              disabled={isSyncing}
+              className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-[11px] font-bold transition-colors"
+            >
+              {isSyncing ? 'A sincronizar…' : 'Sincronizar'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Navigation (Mobile) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-safe z-20 shrink-0">
         <div className="flex justify-around max-w-screen-md mx-auto relative" ref={moreMenuRef}>
@@ -429,7 +534,10 @@ export default function Layout({ onLogout }: LayoutProps) {
             </NavLink>
           ))}
 
-          {/* Botão "Mais" */}
+          {/* Botão "Mais" — só quando há mesmo algo em overflow. Estava fora
+              do filtro de grants, pelo que sobrevivia sozinho a uma lista
+              vazia e abria um painel sem nada, parecendo avariado. */}
+          {overflowNavItems.length > 0 && (
           <button
             onClick={() => setShowMoreMenu(v => !v)}
             className={cn(
@@ -447,9 +555,10 @@ export default function Layout({ onLogout }: LayoutProps) {
               </span>
             )}
           </button>
+          )}
 
           {/* Painel de overflow */}
-          {showMoreMenu && (
+          {showMoreMenu && overflowNavItems.length > 0 && (
             <div className="absolute bottom-full right-0 mb-2 w-44 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-bottom-right">
               {overflowNavItems.map((item) => (
                 <NavLink

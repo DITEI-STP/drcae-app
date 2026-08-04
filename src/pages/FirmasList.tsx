@@ -8,6 +8,7 @@ import { useAppGrants } from '../lib/grants';
 import { useGeoLocation } from '../lib/geo';
 import { calculateDistanceKm } from '../lib/routing';
 import { classifyFirmaRisk, buildInfracoesCountByVisita, groupVisitasByFirma } from '../lib/firmaRisk';
+import { semRascunhos } from '../lib/visitaDraft';
 
 const getAvatarData = (name: string, nif: string) => {
   const cleanName = (name || 'Firma').trim();
@@ -120,7 +121,7 @@ export default function FirmasList() {
     async () => {
       // 1. Obter todas as firmas, visitas e infrações
       const allFirmas = await db.firmas.toArray();
-      const allVisitas = await db.visitas.toArray();
+      const allVisitas = semRascunhos(await db.visitas.toArray());
       const allInfracoes = await db.infracoes.toArray();
 
       // 2/3/4. Classificar cada firma pela sua situação actual. A lógica vive

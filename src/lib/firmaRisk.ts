@@ -1,4 +1,5 @@
 import type { Visita, Infracao } from '../db/db';
+import { tecnicoNames } from './inspectionModel';
 
 // Situação actual de um operador, derivada do histórico de visitas e infracções.
 //
@@ -75,7 +76,7 @@ export function recomendacoesEmAberto(visitas: Visita[]): RecomendacaoEmAberto[]
         text: texto,
         visitaOrigemId: visita.id!,
         dataOrigem: visita.date,
-        equipaOrigem: visita.technicians || [],
+        equipaOrigem: tecnicoNames(visita.technicians),
         atendida: false,
       });
     }

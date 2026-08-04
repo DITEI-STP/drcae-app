@@ -1,5 +1,35 @@
 import { useEffect, useState } from 'react';
 
+// Converte um rumo em [0, 360) numa série contínua, somando sempre o menor
+// arco entre a leitura anterior e a nova.
+//
+// Um rumo bruto salta de 359 para 1 ao passar o norte. Quem o use para animar
+// uma rotação — via transição CSS ou qualquer interpolação — vê esse salto
+// como uma viagem de 358° no sentido contrário: o radar dava meia volta para
+// trás sempre que o agente apontava o aparelho a norte, e nunca chegava a
+// assentar no norte. Somando deltas em ]-180, 180] o valor devolvido cresce ou
+// decresce monotonamente ao longo de uma rotação real, e a interpolação passa
+// a seguir o caminho curto, que é o único que corresponde ao movimento da mão.
+//
+// O acumulado não é reduzido a [0, 360): reduzi-lo reintroduziria exactamente
+// a descontinuidade que este hook existe para eliminar. Cresce sem limite, o
+// que é irrelevante — um dia inteiro de rotação contínua fica na ordem das
+// dezenas de milhar de graus, muito longe da precisão de um double.
+export function useUnwrappedHeading(heading: number | null): number | null {
+  const [unwrapped, setUnwrapped] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (heading === null) return;
+    setUnwrapped((previous) => {
+      if (previous === null) return heading;
+      const delta = ((((heading - previous) % 360) + 540) % 360) - 180;
+      return previous + delta;
+    });
+  }, [heading]);
+
+  return unwrapped;
+}
+
 const HEADING_KEY = 'drcae_device_heading';
 const HEADING_EVENT = 'drcae-heading-update';
 

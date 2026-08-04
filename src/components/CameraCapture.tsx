@@ -1,6 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { RefreshCcw, X, ZoomIn, ZoomOut, Zap, Square, Circle, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import {
+  escolherTraseiraPrincipal,
+  lerEscolhaMemorizada,
+  memorizarEscolha,
+  restricoesTraseira,
+} from '../lib/cameraChoice';
 
 interface CameraCaptureProps {
   onCapture: (file: File) => void;
@@ -70,10 +76,14 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
     }
     trackRef.current = null;
 
-    const videoConstraints =
+    // Traseira: exigida, e a lente escolhida pelo torch — ver lib/cameraChoice.
+    // A frontal continua a ser pedida por `facingMode`, porque é só uma.
+    const videoConstraints: MediaTrackConstraints =
       devIndex !== null && cameras[devIndex]
         ? { deviceId: { exact: cameras[devIndex].deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        : { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } };
+        : facing === 'environment'
+          ? restricoesTraseira(lerEscolhaMemorizada())
+          : { facingMode: { exact: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } };
 
     const tryGetStream = async (withAudio: boolean): Promise<MediaStream> => {
       return navigator.mediaDevices.getUserMedia({
@@ -112,6 +122,26 @@ export default function CameraCapture({ onCapture, onClose, mode = 'photo' }: Ca
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cams = devices.filter(d => d.kind === 'videoinput');
         setCameras(cams);
+
+        // Sondagem única por dispositivo: as capacidades — e portanto o torch —
+        // só se leem com a câmara aberta. Depois de memorizada, nunca mais.
+        if (facing === 'environment' && devIndex === null && !lerEscolhaMemorizada()) {
+          const escolhida = await escolherTraseiraPrincipal(devices, async (deviceId) => {
+            const sonda = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: deviceId } },
+            });
+            const t = sonda.getVideoTracks()[0] ?? null;
+            const caps = t?.getCapabilities?.() as { torch?: boolean } | undefined;
+            // Fechar a sonda antes de devolver: manter dois fluxos abertos ao
+            // mesmo tempo trava a câmara em muitos dispositivos Android.
+            sonda.getTracks().forEach((x) => x.stop());
+            return caps ? ({ getCapabilities: () => caps } as MediaStreamTrack) : null;
+          }).catch(() => null);
+          if (escolhida) {
+            memorizarEscolha(escolhida);
+            setCameras(cams);
+          }
+        }
       }
     } catch {
       setError('Não foi possível aceder à câmara. Verifique as permissões do browser ou contexto HTTPS.');

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, AlertTriangle, Info, ShieldAlert } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { resolveConfirm, type ConfirmRequest } from '../lib/notifications';
+import { useBackIntent } from '../hooks/useBackIntent';
 
 interface ToastItem {
   id: string;
@@ -17,6 +19,19 @@ interface AlertItem {
 export default function NotificationContainer() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [alert, setAlert] = useState<AlertItem | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+
+  // Responder fecha e resolve a promessa de quem perguntou. Sem isto, um
+  // `confirmDialog` por responder deixaria o chamador pendurado para sempre.
+  const answer = (value: boolean) => {
+    if (!confirm) return;
+    resolveConfirm(confirm.id, value);
+    setConfirm(null);
+  };
+
+  // O «voltar» do Android fecha o diálogo como um cancelamento, em vez de
+  // recuar o ecrã por trás dele — mesmo contrato dos restantes modais.
+  useBackIntent(() => answer(false), Boolean(confirm));
 
   useEffect(() => {
     const handleToast = (e: Event) => {
@@ -35,12 +50,18 @@ export default function NotificationContainer() {
       setAlert({ title, message, type });
     };
 
+    const handleConfirm = (e: Event) => {
+      setConfirm((e as CustomEvent).detail as ConfirmRequest);
+    };
+
     window.addEventListener('drcae-toast', handleToast);
     window.addEventListener('drcae-alert', handleAlert);
+    window.addEventListener('drcae-confirm', handleConfirm);
 
     return () => {
       window.removeEventListener('drcae-toast', handleToast);
       window.removeEventListener('drcae-alert', handleAlert);
+      window.removeEventListener('drcae-confirm', handleConfirm);
     };
   }, []);
 
@@ -75,21 +96,21 @@ export default function NotificationContainer() {
       {/* Alert Modal / Dialog */}
       {alert && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-start gap-4">
               <div className={cn(
                 "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-xs",
-                alert.type === 'warning' ? "bg-amber-100 text-amber-600" :
-                alert.type === 'error' ? "bg-red-100 text-red-600" :
-                "bg-blue-100 text-blue-600"
+                alert.type === 'warning' ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" :
+                alert.type === 'error' ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" :
+                "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
               )}>
                 {alert.type === 'warning' && <AlertTriangle className="w-6 h-6" />}
                 {alert.type === 'error' && <ShieldAlert className="w-6 h-6" />}
                 {alert.type === 'info' && <Info className="w-6 h-6" />}
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <h3 className="font-extrabold text-slate-900 text-base leading-snug">{alert.title}</h3>
-                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-2 whitespace-pre-line">
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug">{alert.title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 whitespace-pre-line">
                   {alert.message}
                 </p>
               </div>
@@ -102,6 +123,59 @@ export default function NotificationContainer() {
                 className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] uppercase tracking-wider"
               >
                 Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmação — duas acções, ao contrário do alerta acima. Aparece por
+          cima dele (z-60) porque um alerta pendente não deve tapar a pergunta
+          a que o utilizador tem de responder para o fluxo continuar. */}
+      {confirm && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4">
+              <div className={cn(
+                "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-xs",
+                confirm.tone === 'warning' ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" :
+                confirm.tone === 'error' ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" :
+                "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+              )}>
+                {confirm.tone === 'warning' && <AlertTriangle className="w-6 h-6" />}
+                {confirm.tone === 'error' && <ShieldAlert className="w-6 h-6" />}
+                {confirm.tone === 'info' && <Info className="w-6 h-6" />}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug">{confirm.title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 whitespace-pre-line">
+                  {confirm.message}
+                </p>
+              </div>
+            </div>
+
+            {/* Cancelar primeiro e a acção a seguir: num ecrã de toque, a
+                posição da direita é a que o polegar alcança primeiro, e é onde
+                deve estar o que o utilizador veio fazer. */}
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => answer(false)}
+                className="w-full sm:w-auto min-h-[44px] px-6 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors uppercase tracking-wider"
+              >
+                {confirm.cancelLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => answer(true)}
+                className={cn(
+                  "w-full sm:w-auto min-h-[44px] px-6 text-white rounded-xl text-xs font-bold shadow-md transition-colors uppercase tracking-wider",
+                  confirm.destructive
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600",
+                )}
+              >
+                {confirm.confirmLabel}
               </button>
             </div>
           </div>

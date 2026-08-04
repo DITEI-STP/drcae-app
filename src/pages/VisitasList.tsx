@@ -5,6 +5,7 @@ import { Search, Plus, Calendar, ShieldAlert, ClipboardList, LayoutList, LayoutG
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { useAppGrants } from '../lib/grants';
+import { semRascunhos } from '../lib/visitaDraft';
 
 type VisitNumberSource = {
   id?: string;
@@ -33,7 +34,7 @@ export default function VisitasList() {
 
   const data = useLiveQuery(
     async () => {
-      let vArr = await db.visitas.toArray();
+      let vArr = semRascunhos(await db.visitas.toArray());
       const comFirma = await Promise.all(vArr.map(async (v) => {
         const firma = await db.firmas.get(v.firmaId);
         return { ...v, firmaName: firma?.name || 'Firma Desconhecida' };

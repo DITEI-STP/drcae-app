@@ -1,10 +1,22 @@
 import { db, type Anexo } from '../db/db';
+import { isRascunho, rascunhoIds } from './visitaDraft';
 import * as api from './api';
 import { AuthSyncError } from './api';
 import { probeServerReachability } from './serverReachability';
 import { patchSyncState } from './syncState';
 import { addAppLog } from './appLogs';
 import { setStoredGrants } from './grants';
+import {
+  writeOperatorSupplyCache,
+  writeSupplyCatalog,
+  type SupplyPullEntry,
+} from './supplyCache';
+import { syncAgentesCatalog } from './agentesCatalog';
+import { syncAvatarCache } from './avatarCache';
+import { syncUtilizadoresCatalog } from './utilizadoresCatalog';
+import { toast } from './notifications';
+import { syncRepresentantes } from './representantesCache';
+import { tecnicoNames } from './inspectionModel';
 
 // String.fromCharCode(...array) falha com arrays > ~65k elementos.
 // Esta versão itera em chunks para suportar ficheiros de qualquer tamanho.
@@ -37,11 +49,29 @@ async function ensureAnexoUploadReference(anexo: Anexo): Promise<Anexo> {
         fileType: anexo.fileType || 'application/octet-stream',
         blob: attachment.data,
       });
+      // O fotograma segue com o anexo, uma vez. Falhar aqui não pode impedir
+      // a prova de subir: perde-se a miniatura, que é conveniência, não a
+      // prova, que é o documento.
+      let posterFields: { poster_ref?: string; posterUrl?: string } = {};
+      if (attachment.poster) {
+        try {
+          const enviado = await api.uploadSyncAttachmentPoster({
+            id: anexo.id,
+            visitaId: anexo.visitaId,
+            blob: attachment.poster,
+          });
+          posterFields = { poster_ref: enviado.file_ref, posterUrl: enviado.url };
+        } catch (err) {
+          addAppLog('warn', 'sync', `Fotograma do anexo ${anexo.id} não foi enviado`, err);
+        }
+      }
+
       const updates = {
         file_ref: upload.file_ref,
         uploadSize: upload.size,
         url: upload.url || anexo.url,
         data: '',
+        ...posterFields,
       };
       await db.anexos.update(anexo.id, updates);
       return { ...anexo, ...updates };
@@ -54,9 +84,13 @@ async function ensureAnexoUploadReference(anexo: Anexo): Promise<Anexo> {
   };
 }
 
-// Perfil de sincronização atribuído pelo servidor (lido do localStorage)
+// Perfil de sincronização atribuído pelo servidor (lido do localStorage).
+//
+// **Máximo** enquanto o servidor não disser outra coisa: um dispositivo que
+// ainda não sincronizou não sabe que perfil tem, e é preferível trazer tudo a
+// descobrir no terreno, sem rede, que o histórico ficou no servidor.
 export function getServerSyncProfile(): string {
-  return localStorage.getItem('drcae_server_sync_profile') || 'standard';
+  return localStorage.getItem('drcae_server_sync_profile') || 'maximum';
 }
 
 // Executa o Pull (Download de actualizações)
@@ -81,10 +115,10 @@ export async function syncPull(profile?: string): Promise<number> {
   }
 
   // Atualizar privilégios (grants) do agente — refletem alterações feitas
-  // no admin (perfil/utilizador) sem exigir novo login.
-  if (Array.isArray(response.grants)) {
-    setStoredGrants(response.grants);
-  }
+  // no admin (perfil/utilizador) sem exigir novo login. O `grants_state`
+  // qualifica a lista: sem ele, ou com `unavailable`, uma lista vazia é
+  // ignorada em vez de apagar os menus (ver `mergeGrants`).
+  setStoredGrants(response.grants, response.grants_state);
 
   // Actualizar Firmas
   if (response.firmas && response.firmas.length > 0) {
@@ -144,24 +178,73 @@ export async function syncPull(profile?: string): Promise<number> {
       if (!existing) {
         await db.anexos.put({ ...a, synced: true });
         count++;
-      } else if (!existing.url && (a as any).url) {
-        // Enriquecer registo local com a URL do servidor se ainda não tiver
-        await db.anexos.update(a.id, { url: (a as any).url, synced: true });
+      } else {
+        // Enriquecer o registo local com o que o servidor tem e falta cá: a URL
+        // do ficheiro e a do fotograma. Sem a segunda, um dispositivo que
+        // recebeu a fiscalização de outro voltaria a descodificar o vídeo.
+        const enriquecer: Partial<import('../db/db').Anexo> = {};
+        if (!existing.url && a.url) enriquecer.url = a.url;
+        if (!existing.posterUrl && a.posterUrl) enriquecer.posterUrl = a.posterUrl;
+        if (Object.keys(enriquecer).length > 0) {
+          await db.anexos.update(a.id, { ...enriquecer, synced: true });
+        }
       }
     }
   }
 
-  // Guardar livros de cálculo (supplies) em cache local por operador
-  if (response.supplies && response.supplies.length > 0) {
-    for (const supply of response.supplies as { firmaId: string; products: any[] }[]) {
-      if (supply.firmaId && supply.products.length > 0) {
-        await db.table('metadata').put({
-          key: `supply_${supply.firmaId}`,
-          value: supply.products,
-        });
-      }
+  // Guardar livros de cálculo (supplies) em cache local por operador, no
+  // mesmo formato que o leitor espera (`{ bookStatus, products }`). Gravar o
+  // array cru, como se fazia antes, produzia uma cache que o `NovaVisita`
+  // descartava silenciosamente — a etapa de cesta básica aparecia vazia mesmo
+  // em dispositivos sincronizados.
+  if (Array.isArray(response.supplies) && response.supplies.length > 0) {
+    for (const supply of response.supplies as SupplyPullEntry[]) {
+      if (!supply.firmaId) continue;
+      await writeOperatorSupplyCache(supply.firmaId, {
+        bookStatus: supply.bookStatus ?? 'active',
+        products: supply.products ?? [],
+        source: 'sync',
+      });
     }
     count += response.supplies.length;
+  }
+
+  // Apreensões e respectivos itens. Autos com obrigação em aberto chegam
+  // sempre, independentemente da janela do perfil — é o que permite ao agente
+  // fazer a recolha de um depósito antigo, no terreno e sem rede.
+  if (Array.isArray(response.apreensoes) && response.apreensoes.length > 0) {
+    for (const ap of response.apreensoes as any[]) {
+      const { itens, ...auto } = ap;
+      await db.apreensoes.put({ ...auto, synced: true });
+      for (const it of itens ?? []) {
+        await db.apreensaoItens.put({ ...it, apreensaoId: auto.id, synced: true });
+      }
+    }
+    count += response.apreensoes.length;
+  }
+
+  // Catálogo de agentes e representantes conhecidos. Nenhum dos dois apaga a
+  // lista local quando vem vazio — ver os módulos respectivos.
+  await syncAgentesCatalog(response.agentes, response.agentes_state);
+  await syncUtilizadoresCatalog(response.utilizadores, response.utilizadores_state);
+  await syncRepresentantes(response.representantes);
+  const avatarSync = await syncAvatarCache(
+    response.avatar_manifest,
+    response.avatar_manifest_state,
+  );
+  if (avatarSync.pending > 0) {
+    toast.info(
+      `Dados sincronizados; ${avatarSync.pending} avatar${avatarSync.pending === 1 ? '' : 'es'} pendente${avatarSync.pending === 1 ? '' : 's'}.`,
+    );
+  }
+
+  // Catálogo global de produtos — o modo manual dos operadores sem livro, e a
+  // marca de que este dispositivo já sincronizou dados de cesta básica.
+  if (Array.isArray(response.supply_catalog?.products)) {
+    await writeSupplyCatalog(
+      response.supply_catalog.products,
+      response.supply_catalog.generated_at ?? null,
+    );
   }
 
   // Gravar novo timestamp de sync no metadata
@@ -177,20 +260,51 @@ export async function syncPull(profile?: string): Promise<number> {
 
 // Executa o Push (Upload de alterações offline)
 export async function syncPush(): Promise<{ pushed: number; errors: string[]; needsAuth?: boolean }> {
+  // Ponto de estrangulamento único do rascunho (SPEC-10 §8): uma fiscalização
+  // por concluir e tudo o que já se lhe pendurou tem `synced: false` como
+  // qualquer registo por sincronizar, e sem este filtro seguiria para o
+  // servidor a meio de estar a ser preenchida no terreno.
+  const rascunhos = await rascunhoIds();
+  const doRascunho = (visitaId: string | undefined) => !!visitaId && rascunhos.has(visitaId);
+
   // Buscar registros não sincronizados (synced === false ou synced === 0)
   const unsyncedFirmas = await db.firmas.filter(f => !f.synced).toArray();
-  const unsyncedVisitas = await db.visitas.filter(v => !v.synced).toArray();
-  const unsyncedInfracoes = await db.infracoes.filter(inf => !inf.synced).toArray();
-  const unsyncedAnexos = await db.anexos.filter(a => !a.synced).toArray();
+  const unsyncedVisitas = await db.visitas.filter(v => !v.synced && !isRascunho(v)).toArray();
+  const unsyncedInfracoes = await db.infracoes.filter(inf => !inf.synced && !doRascunho(inf.visitaId)).toArray();
+  const unsyncedAnexos = await db.anexos.filter(a => !a.synced && !doRascunho(a.visitaId)).toArray();
+  const unsyncedApreensoes = await db.apreensoes.filter(a => !a.synced && !doRascunho(a.visitaId)).toArray();
+  const unsyncedRecolhas = await db.recolhas.filter(r => !r.synced).toArray();
+  const unsyncedConstatacoes = await db.constatacoes
+    .filter(c => !c.synced && !doRascunho(c.visitaId))
+    .toArray();
 
   if (
     unsyncedFirmas.length === 0 &&
     unsyncedVisitas.length === 0 &&
     unsyncedInfracoes.length === 0 &&
-    unsyncedAnexos.length === 0
+    unsyncedAnexos.length === 0 &&
+    unsyncedApreensoes.length === 0 &&
+    unsyncedRecolhas.length === 0 &&
+    unsyncedConstatacoes.length === 0
   ) {
     return { pushed: 0, errors: [] };
   }
+
+  // Os itens viajam dentro do respectivo auto: o servidor cria auto e itens na
+  // mesma transacção lógica, e deduplica por `app_uid`. Enviá-los como
+  // entidades soltas abriria a porta a um auto sem itens, que o backend recusa.
+  const apreensoesPayload = await Promise.all(
+    unsyncedApreensoes.map(async (ap) => ({
+      ...ap,
+      itens: await db.apreensaoItens.where('apreensaoId').equals(ap.id!).toArray(),
+    })),
+  );
+  const recolhasPayload = await Promise.all(
+    unsyncedRecolhas.map(async (rec) => ({
+      ...rec,
+      itens: await db.recolhaItens.where('recolhaId').equals(rec.id!).toArray(),
+    })),
+  );
 
   // Recolher preços de cesta básica de todas as visitas com produtos.
   // Conformidade é calculada por campo (grosso/retalho separadamente) para
@@ -238,7 +352,10 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
   patchSyncState({ phase: 'pushing', pushTotal, pushDone: 0, pushErrors: 0 });
 
   const savedTeam = localStorage.getItem('drcae_equipe');
-  const parsedTeam = savedTeam ? JSON.parse(savedTeam).join(', ') : null;
+  // `.join()` sobre a equipa em formato novo produzia «[object Object]».
+  const parsedTeam = savedTeam
+    ? tecnicoNames(JSON.parse(savedTeam)).join(', ') || null
+    : null;
   const anexoPayload: any[] = [];
   const localErrors: string[] = [];
   for (const a of unsyncedAnexos) {
@@ -262,6 +379,9 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
     infracoes: unsyncedInfracoes,
     anexos: anexoPayload,
     prices,
+    apreensoes: apreensoesPayload,
+    recolhas: recolhasPayload,
+    constatacoes: unsyncedConstatacoes,
     team: parsedTeam,
   };
 
@@ -285,6 +405,34 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
     const acceptedIds = new Set(response.accepted);
     const now = Date.now();
     const UMA_HORA = 60 * 60 * 1000;
+
+    // A constatação segue a sorte da fiscalização que agrupa: o servidor
+    // deduplica-a por `app_uid`, pelo que reenviá-la por engano é inofensivo,
+    // ao passo que dá-la por sincronizada sem a visita ter sido aceite deixaria
+    // o agrupamento no dispositivo e nunca mais no servidor.
+    for (const c of unsyncedConstatacoes) {
+      if (c.id && acceptedIds.has(c.visitaId)) {
+        await db.constatacoes.update(c.id, { synced: true });
+      }
+    }
+
+    // Os autos aceites e os respectivos itens deixam de estar pendentes.
+    for (const ap of unsyncedApreensoes) {
+      if (!ap.id || !acceptedIds.has(ap.id)) continue;
+      await db.apreensoes.update(ap.id, { synced: true });
+      const itens = await db.apreensaoItens.where('apreensaoId').equals(ap.id).toArray();
+      for (const it of itens) {
+        if (it.id) await db.apreensaoItens.update(it.id, { synced: true });
+      }
+    }
+    for (const rec of unsyncedRecolhas) {
+      if (!rec.id || !acceptedIds.has(rec.id)) continue;
+      await db.recolhas.update(rec.id, { synced: true });
+      const itens = await db.recolhaItens.where('recolhaId').equals(rec.id).toArray();
+      for (const it of itens) {
+        if (it.id) await db.recolhaItens.update(it.id, { synced: true });
+      }
+    }
 
     await db.batchMarkSynced({
       firmaIds: unsyncedFirmas.filter(f => f.id && acceptedIds.has(f.id)).map(f => f.id!),
@@ -313,8 +461,29 @@ export async function syncPush(): Promise<{ pushed: number; errors: string[]; ne
 let isSyncInProgress = false;
 let syncRerunRequested = false;
 
+/**
+ * Refresca os dados de referência vindos de `asset` na cache local.
+ *
+ * Partilhado com o arranque de sessão (`App.tsx`), para haver um só sítio a
+ * decidir que chaves são escritas — as listas de nacionalidades, tipos de
+ * documento, unidades e ramos leem todas daqui.
+ *
+ * Nunca lança: sem rede, a cache anterior é o comportamento correcto.
+ */
+export async function refreshReferenceAssets(): Promise<void> {
+  try {
+    const data = await api.getAssets();
+    localStorage.setItem('drcae_officers_list', JSON.stringify(data.officers || []));
+    localStorage.setItem('drcae_assets', JSON.stringify(data.assets || []));
+    localStorage.setItem('drcae_infractions', JSON.stringify(data.infractions || []));
+    localStorage.setItem('drcae_branches', JSON.stringify(data.branches || []));
+  } catch (err) {
+    console.warn('[drcae] Falha ao refrescar dados de referência; a usar cache anterior.', err);
+  }
+}
+
 // Sincronização Geral (Push -> Pull)
-export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
+export async function triggerFullSync(profile = 'maximum'): Promise<{ pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
   if (isSyncInProgress) {
     syncRerunRequested = true;
     return { pulled: 0, pushed: 0, errors: [] };
@@ -356,6 +525,13 @@ export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: n
       }
       totalPulled += pulled;
 
+      // 3. Dados de referência (`asset`): nacionalidades, tipos de documento,
+      // unidades de medida e ramos. Só eram escritos no login, pelo que um
+      // tablet com sessão aberta há semanas ficava com o catálogo congelado no
+      // dia em que entrou. Falha aqui não é falha de sync: a cache anterior
+      // continua válida e o pull já foi contabilizado.
+      await refreshReferenceAssets();
+
       const endedAt = Date.now();
       patchSyncState({
         phase: 'done',
@@ -373,12 +549,22 @@ export async function triggerFullSync(profile = 'standard'): Promise<{ pulled: n
       pushed: totalPushed,
       errors: allErrors,
     };
+  } catch (err) {
+    // Rede indisponível e sessão expirada já têm tratamento próprio; o que cai
+    // aqui é o inesperado — um método que não existe na tabela, um registo
+    // corrompido, uma quota esgotada. Sem este ramo a excepção escapava sem
+    // tocar no estado de sincronização nem nos registos técnicos, e a app
+    // ficava a dizer que estava tudo bem enquanto nada saía do dispositivo.
+    const message = (err as Error)?.message || String(err);
+    addAppLog('error', 'sync', `Sincronização interrompida: ${message}`, err);
+    patchSyncState({ phase: 'error', endedAt: Date.now(), errors: [...allErrors, message] });
+    throw err;
   } finally {
     isSyncInProgress = false;
   }
 }
 
-export async function triggerFullSyncIfReachable(profile = 'standard'): Promise<{ reachable: boolean; pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
+export async function triggerFullSyncIfReachable(profile = 'maximum'): Promise<{ reachable: boolean; pulled: number; pushed: number; errors: string[]; needsAuth?: boolean }> {
   const reachable = await probeServerReachability();
   if (!reachable) {
     return { reachable: false, pulled: 0, pushed: 0, errors: [] };

@@ -31,6 +31,11 @@ import { useDeviceIdentity } from '../lib/deviceIdentity';
 import { useMotionState, describeMotion } from '../lib/motionState';
 import NearbyOperatorsRadar from '../components/NearbyOperatorsRadar';
 import { useOperadores } from '../lib/operadoresCache';
+import { normalizeTecnicos } from '../lib/inspectionModel';
+import { isRascunho } from '../lib/visitaDraft';
+import Avatar from '../components/Avatar';
+import type { Agente, Tecnico } from '../db/db';
+import { indexAgentAvatars } from '../lib/avatarIdentity';
 
 // Helper determinístico para iniciais e gradientes de firmas
 const getAvatarData = (name: string, nif: string) => {
@@ -90,7 +95,7 @@ const getMemberAvatar = (name: string) => {
 
 export default function Dashboard() {
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
-  const [equipe, setEquipe] = React.useState<string[]>([]);
+  const [equipe, setEquipe] = React.useState<Tecnico[]>([]);
 
   React.useEffect(() => {
     const up = () => setIsOnline(true);
@@ -107,19 +112,22 @@ export default function Dashboard() {
     const saved = localStorage.getItem('drcae_equipe');
     if (saved) {
       try {
-        setEquipe(JSON.parse(saved));
-      } catch (e) {
+        setEquipe(normalizeTecnicos(JSON.parse(saved)));
+      } catch {
         setEquipe([]);
       }
     }
   }, []);
+
+  const agentes = useLiveQuery(() => db.agentes.toArray(), [], [] as Agente[]);
+  const agentByUid = React.useMemo(() => indexAgentAvatars(agentes), [agentes]);
 
   // Contagens: `count()` não desencripta nada, pelo que o ecrã pinta de
   // imediato com elas enquanto o resto vem a caminho.
   const counts = useLiveQuery(
     async () => ({
       firmas: await db.firmas.count(),
-      visitas: await db.visitas.count(),
+      visitas: await db.visitas.filter(v => !isRascunho(v)).count(),
       infracoes: await db.infracoes.count(),
     }),
     [],
@@ -487,14 +495,21 @@ export default function Dashboard() {
             {equipe.length === 0 ? (
                <p className="text-xs text-slate-400 dark:text-slate-500">Nenhum técnico escalado para hoje.</p>
             ) : (
-               equipe.map((m, i) => {
-                  const memberGeo = getMemberAvatar(m);
+               equipe.map((member, i) => {
+                  const memberGeo = getMemberAvatar(member.name);
+                  const agent = member.uid ? agentByUid.get(member.uid) : undefined;
                   return (
-                     <span key={i} className="text-xs font-semibold px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-full flex items-center gap-1.5 shadow-3xs">
-                        <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-black bg-gradient-to-br", memberGeo.gradient)}>
-                           {memberGeo.initials}
-                        </div>
-                        {m}
+                     <span key={member.uid || `${member.name}-${i}`} className="text-xs font-semibold px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-full flex items-center gap-1.5 shadow-3xs">
+                        <Avatar
+                           nome={member.name}
+                           iniciais={memberGeo.initials}
+                           url={agent?.photoUrl}
+                           versao={agent?.photoVersion}
+                           ownerUid={agent?.avatarOwnerUid}
+                           avatarVersion={agent?.avatarVersion}
+                           className={cn("w-5 h-5 text-[8px] font-black bg-gradient-to-br", memberGeo.gradient)}
+                        />
+                        {member.name}
                      </span>
                   );
                })

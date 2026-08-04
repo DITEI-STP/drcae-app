@@ -16,14 +16,16 @@ import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
 import Central from './pages/Central';
 import Equipe from './pages/Equipe';
+import Utilizadores from './pages/Utilizadores';
 import PendentesPage from './pages/PendentesPage';
+import Apreensoes, { ApreensaoDetailPage } from './pages/Apreensoes';
 import SetupPage from './pages/SetupPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, UploadCloud, Cpu, Layers, Disc, Camera, QrCode, AlertCircle, Smartphone, Maximize, Minimize, ArrowUpCircle, ArrowDownCircle, CheckCircle2, XCircle, Clock, Wifi, WifiOff, Activity, Zap, Sun, Moon, Laptop, Bug, Trash2 } from 'lucide-react';
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
-import { triggerFullSync } from './lib/sync';
+import { refreshReferenceAssets, triggerFullSync } from './lib/sync';
 import { checkServerReachable, isServerReachable } from './lib/serverReachability';
 import { useSyncState } from './lib/syncState';
 export { useSyncState };
@@ -44,13 +46,16 @@ import { DRCAE_APP_VERSION } from './lib/version';
 import { wipeLocalState } from './lib/deviceWipe';
 import { WEBVIEW_APK_DOWNLOAD_URL } from './lib/webviewApk';
 import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSynced, type AppLogEntry } from './lib/appLogs';
+import { getStoredGrants, restoreGrantsFromSnapshot } from './lib/grants';
+import { readSupplyDiagnostics, type SupplyDiagnostics } from './lib/supplyCache';
+import { persistLoginAvatar } from './lib/avatarCache';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
 function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const { theme, setTheme } = useTheme();
   const [selectedProfile, setSelectedProfile] = useState<'economy' | 'standard' | 'maximum'>(() => {
-    return (localStorage.getItem('drcae_server_sync_profile') as 'economy' | 'standard' | 'maximum') || 'standard';
+    return (localStorage.getItem('drcae_server_sync_profile') as 'economy' | 'standard' | 'maximum') || 'maximum';
   });
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -90,6 +95,10 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     const metaLastSync = await db.metadata.get('last_sync_at');
     const lastSyncAt: string | null = metaLastSync?.value || null;
 
+    // Cesta básica: sem estes contadores, uma cache vazia volta a passar
+    // despercebida até alguém dar por ela no terreno, sem rede.
+    const supply: SupplyDiagnostics = await readSupplyDiagnostics();
+
     return {
       totalFirmas, unsyncedFirmas, syncedFirmas: totalFirmas - unsyncedFirmas,
       totalVisitas, unsyncedVisitas, syncedVisitas: totalVisitas - unsyncedVisitas,
@@ -97,6 +106,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
       totalAnexos, unsyncedAnexos, syncedAnexos: totalAnexos - unsyncedAnexos,
       queueLength: 0,
       lastSyncAt,
+      supply,
     };
   }, []);
 
@@ -322,356 +332,6 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 max-w-4xl mx-auto w-full">
-
-      {/* CARD DE PERFIL DE SINCRONIZAÇÃO (atribuído pelo admin) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Perfil de Sincronização</h3>
-          <span className="ml-auto text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">Atribuído pelo Admin</span>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
-            O perfil de sincronização é configurado centralmente pelo administrador do sistema e aplicado automaticamente a este dispositivo.
-          </p>
-
-          {/* Perfil activo - read-only */}
-          <div className={cn(
-            'p-4 rounded-xl border-2 flex items-center gap-4',
-            selectedProfile === 'economy'
-              ? 'border-amber-400 bg-amber-50/40 dark:border-amber-500/80 dark:bg-amber-950/10'
-              : selectedProfile === 'maximum'
-              ? 'border-emerald-500 bg-emerald-50/40 dark:border-emerald-600/80 dark:bg-emerald-950/10'
-              : 'border-indigo-500 bg-indigo-50/40 dark:border-indigo-650/80 dark:bg-indigo-950/10'
-          )}>
-            <div className={cn(
-              'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
-              selectedProfile === 'economy' ? 'bg-amber-100 dark:bg-amber-950/40' : selectedProfile === 'maximum' ? 'bg-emerald-100 dark:bg-emerald-950/40' : 'bg-indigo-100 dark:bg-indigo-950/40'
-            )}>
-              <Layers className={cn(
-                'w-5 h-5',
-                selectedProfile === 'economy' ? 'text-amber-600 dark:text-amber-450' : selectedProfile === 'maximum' ? 'text-emerald-600 dark:text-emerald-450' : 'text-indigo-600 dark:text-indigo-455'
-              )} />
-            </div>
-            <div className="flex-1">
-              <p className={cn(
-                'font-bold text-sm',
-                selectedProfile === 'economy' ? 'text-amber-800 dark:text-amber-300' : selectedProfile === 'maximum' ? 'text-emerald-800 dark:text-emerald-300' : 'text-indigo-800 dark:text-indigo-300'
-              )}>
-                {selectedProfile === 'economy' ? 'Mínimo / Económico' : selectedProfile === 'maximum' ? 'Offline Total / Máximo' : 'Padrão / Recomendado'}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                {selectedProfile === 'economy'
-                  ? 'Poupança de dados — histórico de 15 dias'
-                  : selectedProfile === 'maximum'
-                  ? 'Histórico completo — acesso offline total'
-                  : 'Equilíbrio recomendado — histórico de 60 dias'}
-              </p>
-            </div>
-            <span className={cn(
-              'text-xs font-black px-2.5 py-1 rounded-full',
-              selectedProfile === 'economy' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : selectedProfile === 'maximum' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-            )}>
-              {selectedProfile === 'economy' ? '~35%' : selectedProfile === 'maximum' ? '100%' : '~70%'}
-            </span>
-          </div>
-
-          {/* Gráfico do nível de dados cacheado */}
-          <div className="bg-slate-50 dark:bg-slate-800/20 p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-3 font-sans">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-700 dark:text-slate-350">Nível do Volume de Cache Ativo:</span>
-              <span className="font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 px-2 py-0.5 rounded-md">
-                {selectedProfile === 'economy' ? '35% (Compacto)' : selectedProfile === 'standard' ? '70% (Recomendado)' : '100% (Total Histórico)'}
-              </span>
-            </div>
-            {/* Barra de Progresso */}
-            <div className="w-full bg-slate-200/70 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
-              <div 
-                className={cn(
-                  'h-full transition-all duration-500 rounded-full',
-                  selectedProfile === 'economy' ? 'bg-amber-500 w-[35%]' : selectedProfile === 'standard' ? 'bg-indigo-600 w-[70%]' : 'bg-emerald-600 w-full'
-                )}
-              />
-            </div>
-
-            {/* Configurações aplicadas reflexivas */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] text-slate-600 dark:text-slate-400 font-semibold border-t border-slate-200/50 dark:border-slate-800">
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Lista de Operadores</span>
-                <p className="text-indigo-950 dark:text-indigo-200 font-bold bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 shadow-3xs">
-                  • 100% Completa (Sempre total)
-                </p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Condições de Operadores</span>
-                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                  • {selectedProfile === 'economy' ? 'Apenas ativos / com alertas' : selectedProfile === 'standard' ? 'Ativos, registados nos últimos 2 anos' : 'Todas as entidades registadas'}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Histórico de Visitas Retidas</span>
-                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                  • {selectedProfile === 'economy' ? 'Até 15 dias atrás' : selectedProfile === 'standard' ? 'Até 60 dias atrás' : 'Histórico Completo'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CARD DE APARÊNCIA / TEMA */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <Sun className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Aparência</h3>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
-            Escolha o tema visual da aplicação. A opção automática adapta-se às configurações do seu dispositivo.
-          </p>
-
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { id: 'auto' as const, label: 'Auto', icon: Laptop, desc: 'Sistema' },
-              { id: 'light' as const, label: 'Claro', icon: Sun, desc: 'Light Mode' },
-              { id: 'dark' as const, label: 'Escuro', icon: Moon, desc: 'Dark Mode' },
-            ].map(({ id, label, icon: Icon, desc }) => {
-              const active = theme === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setTheme(id);
-                    toast.info(`Tema alterado para ${label}`);
-                  }}
-                  className={cn(
-                    'flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer text-center',
-                    active
-                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                      : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-700 dark:hover:text-slate-350'
-                  )}
-                >
-                  <Icon className="w-5 h-5 mb-1.5" />
-                  <span className="text-xs font-bold block">{label}</span>
-                  <span className="text-[10px] opacity-70 mt-0.5">{desc}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-      
-      {/* CARD DE ACTUALIZAÇÃO DA APLICAÇÃO */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <ArrowDownCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Versão da Aplicação</h3>
-          <span className="ml-auto text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
-            {DRCAE_APP_VERSION}
-          </span>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
-            A aplicação actualiza-se sozinha sempre que estiver online. Use esta opção para procurar
-            de imediato uma versão nova — se existir, a aplicação recarrega automaticamente.
-          </p>
-
-          {updateState !== 'idle' && updateState !== 'checking' && (
-            <div className={cn(
-              'rounded-xl px-4 py-3 border flex items-start gap-2.5 text-xs font-semibold',
-              updateState === 'update-found'
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                : updateState === 'up-to-date'
-                ? 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
-                : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30 text-amber-700 dark:text-amber-400'
-            )}>
-              {updateState === 'update-found' ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-px" />}
-              <span>
-                {updateState === 'update-found'
-                  ? 'Actualização encontrada — a aplicação vai recarregar dentro de instantes.'
-                  : updateState === 'up-to-date'
-                  ? 'Já está a usar a versão mais recente.'
-                  : updateState === 'offline'
-                  ? 'Sem ligação ao servidor. Ligue-se à rede e tente novamente.'
-                  : 'Este ambiente não suporta actualização automática. Reinstale ou reabra a aplicação para obter a versão nova.'}
-              </span>
-            </div>
-          )}
-
-          <button
-            onClick={handleCheckUpdate}
-            disabled={updateState === 'checking'}
-            className={cn(
-              'w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer border',
-              updateState === 'checking'
-                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
-            )}
-          >
-            <RefreshCw className={cn('w-4 h-4', updateState === 'checking' && 'animate-spin')} />
-            {updateState === 'checking' ? 'A procurar actualizações...' : 'Verificar actualizações'}
-          </button>
-        </div>
-      </div>
-
-      {/* storage details card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <Disc className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Estado do Armazenamento e Cache</h3>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-100 dark:border-slate-800 gap-4">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-0.5">Ocupação em Disco (Estimativa de Dados)</span>
-              <span className="text-2xl font-black text-slate-900 dark:text-white">{bytesState.bytes === 0 ? 'A calcular...' : formatBytes(bytesState.bytes)}</span>
-            </div>
-            <div className="flex gap-4">
-              <div className="text-center bg-emerald-50 dark:bg-emerald-950/20 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30 min-w-[100px]">
-                <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-450 uppercase tracking-wider block">Sincronizados (Cache)</span>
-                <span className="text-base font-extrabold text-emerald-950 dark:text-emerald-200">
-                  {stats ? (stats.syncedFirmas + stats.syncedVisitas + stats.syncedInfracoes + stats.syncedAnexos) : 0}
-                </span>
-              </div>
-              <div className="text-center bg-orange-50 dark:bg-orange-950/20 px-3 py-2 rounded-xl border border-orange-100 dark:border-orange-900/30 min-w-[100px]">
-                <span className="text-[9px] font-bold text-orange-800 dark:text-orange-455 uppercase tracking-wider block">Novos (Por Submeter)</span>
-                <span className="text-base font-extrabold text-orange-950 dark:text-orange-200">
-                  {stats ? (stats.unsyncedFirmas + stats.unsyncedVisitas + stats.unsyncedInfracoes + stats.unsyncedAnexos) : 0}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Operadores</span>
-                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalFirmas || 0}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
-                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedFirmas || 0}</span>
-                <span className="text-orange-600 dark:text-orange-500">Novos: {stats?.unsyncedFirmas || 0}</span>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Fiscalizações</span>
-                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalVisitas || 0}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
-                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedVisitas || 0}</span>
-                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedVisitas || 0}</span>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Infrações</span>
-                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalInfracoes || 0}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
-                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedInfracoes || 0}</span>
-                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedInfracoes || 0}</span>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Anexos / Imagens</span>
-                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalAnexos || 0}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
-                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedAnexos || 0}</span>
-                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedAnexos || 0}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* LOGS TÉCNICOS */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Bug className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-            <div>
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Erros e Logs Técnicos</h3>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Registos locais recentes deste dispositivo</p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              clearAppLogs();
-              toast.info('Logs técnicos limpos.');
-            }}
-            disabled={appLogs.length === 0}
-            className={cn(
-              'p-2 rounded-lg border transition-colors',
-              appLogs.length === 0
-                ? 'text-slate-300 dark:text-slate-700 border-slate-200 dark:border-slate-800 cursor-not-allowed'
-                : 'text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/20'
-            )}
-            title="Limpar logs"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5">
-          {appLogs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 p-5 text-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Sem erros registados neste dispositivo.</p>
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
-              {appLogs.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={cn(
-                    'rounded-xl border p-3',
-                    entry.level === 'error'
-                      ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/70 dark:bg-rose-950/10'
-                      : entry.level === 'warn'
-                      ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/10'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[9px] uppercase tracking-widest font-black text-slate-500 dark:text-slate-400">{entry.scope}</span>
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
-                          {new Date(entry.ts).toLocaleString('pt-PT')}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">{entry.message}</p>
-                    </div>
-                    <span className={cn(
-                      'text-[9px] uppercase font-black px-2 py-1 rounded-md shrink-0',
-                      entry.level === 'error'
-                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
-                        : entry.level === 'warn'
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                        : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                    )}>
-                      {entry.level}
-                    </span>
-                  </div>
-                  {entry.details && (
-                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 text-slate-100 p-2 text-[10px] leading-relaxed">
-                      {entry.details}
-                    </pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* ═══════════════════════════════════════════════════════════════
            PAINEL DE SINCRONIZAÇÃO — estado em tempo real + acções
@@ -900,10 +560,388 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
               )}
+
+              {/* ── Cesta básica em cache ── */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2 border-b border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Cesta básica em cache</span>
+                </div>
+                <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-850">
+                  <div className="p-3 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Operadores com livro</span>
+                    <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.supply?.operatorsWithBook ?? 0}</span>
+                  </div>
+                  <div className="p-3 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Produtos no catálogo</span>
+                    <span className={cn(
+                      'text-lg font-black',
+                      (stats?.supply?.catalogProducts ?? 0) > 0
+                        ? 'text-slate-800 dark:text-slate-200'
+                        : 'text-red-600 dark:text-red-400'
+                    )}>
+                      {stats?.supply?.catalogProducts ?? 0}
+                    </span>
+                  </div>
+                </div>
+                <div className="px-3.5 py-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  {stats?.supply?.catalogCachedAt
+                    ? <>Catálogo actualizado {formatLastSync(new Date(stats.supply.catalogCachedAt).toISOString())}</>
+                    : <span className="text-red-600 dark:text-red-400">Catálogo nunca sincronizado — a etapa de cesta básica ficará vazia sem rede.</span>}
+                </div>
+              </div>
             </div>
           </div>
         );
       })()}
+
+      {/* CARD DE ACTUALIZAÇÃO DA APLICAÇÃO */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <ArrowDownCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Versão da Aplicação</h3>
+          <span className="ml-auto text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
+            {DRCAE_APP_VERSION}
+          </span>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+            A aplicação actualiza-se sozinha sempre que estiver online. Use esta opção para procurar
+            de imediato uma versão nova — se existir, a aplicação recarrega automaticamente.
+          </p>
+
+          {updateState !== 'idle' && updateState !== 'checking' && (
+            <div className={cn(
+              'rounded-xl px-4 py-3 border flex items-start gap-2.5 text-xs font-semibold',
+              updateState === 'update-found'
+                ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                : updateState === 'up-to-date'
+                ? 'bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300'
+                : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30 text-amber-700 dark:text-amber-400'
+            )}>
+              {updateState === 'update-found' ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-px" />}
+              <span>
+                {updateState === 'update-found'
+                  ? 'Actualização encontrada — a aplicação vai recarregar dentro de instantes.'
+                  : updateState === 'up-to-date'
+                  ? 'Já está a usar a versão mais recente.'
+                  : updateState === 'offline'
+                  ? 'Sem ligação ao servidor. Ligue-se à rede e tente novamente.'
+                  : 'Este ambiente não suporta actualização automática. Reinstale ou reabra a aplicação para obter a versão nova.'}
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={handleCheckUpdate}
+            disabled={updateState === 'checking'}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer border',
+              updateState === 'checking'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
+            )}
+          >
+            <RefreshCw className={cn('w-4 h-4', updateState === 'checking' && 'animate-spin')} />
+            {updateState === 'checking' ? 'A procurar actualizações...' : 'Verificar actualizações'}
+          </button>
+        </div>
+      </div>
+
+      {/* CARD DE PERFIL DE SINCRONIZAÇÃO (atribuído pelo admin) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Perfil de Sincronização</h3>
+          <span className="ml-auto text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">Atribuído pelo Admin</span>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+            O perfil de sincronização é configurado centralmente pelo administrador do sistema e aplicado automaticamente a este dispositivo.
+          </p>
+
+          {/* Perfil activo - read-only */}
+          <div className={cn(
+            'p-4 rounded-xl border-2 flex items-center gap-4',
+            selectedProfile === 'economy'
+              ? 'border-amber-400 bg-amber-50/40 dark:border-amber-500/80 dark:bg-amber-950/10'
+              : selectedProfile === 'maximum'
+              ? 'border-emerald-500 bg-emerald-50/40 dark:border-emerald-600/80 dark:bg-emerald-950/10'
+              : 'border-indigo-500 bg-indigo-50/40 dark:border-indigo-650/80 dark:bg-indigo-950/10'
+          )}>
+            <div className={cn(
+              'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
+              selectedProfile === 'economy' ? 'bg-amber-100 dark:bg-amber-950/40' : selectedProfile === 'maximum' ? 'bg-emerald-100 dark:bg-emerald-950/40' : 'bg-indigo-100 dark:bg-indigo-950/40'
+            )}>
+              <Layers className={cn(
+                'w-5 h-5',
+                selectedProfile === 'economy' ? 'text-amber-600 dark:text-amber-450' : selectedProfile === 'maximum' ? 'text-emerald-600 dark:text-emerald-450' : 'text-indigo-600 dark:text-indigo-455'
+              )} />
+            </div>
+            <div className="flex-1">
+              <p className={cn(
+                'font-bold text-sm',
+                selectedProfile === 'economy' ? 'text-amber-800 dark:text-amber-300' : selectedProfile === 'maximum' ? 'text-emerald-800 dark:text-emerald-300' : 'text-indigo-800 dark:text-indigo-300'
+              )}>
+                {selectedProfile === 'economy' ? 'Mínimo / Económico' : selectedProfile === 'maximum' ? 'Offline Total / Máximo' : 'Padrão / Recomendado'}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                {selectedProfile === 'economy'
+                  ? 'Poupança de dados — histórico de 15 dias'
+                  : selectedProfile === 'maximum'
+                  ? 'Histórico completo — acesso offline total'
+                  : 'Equilíbrio recomendado — histórico de 60 dias'}
+              </p>
+            </div>
+            <span className={cn(
+              'text-xs font-black px-2.5 py-1 rounded-full',
+              selectedProfile === 'economy' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : selectedProfile === 'maximum' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+            )}>
+              {selectedProfile === 'economy' ? '~35%' : selectedProfile === 'maximum' ? '100%' : '~70%'}
+            </span>
+          </div>
+
+          {/* Gráfico do nível de dados cacheado */}
+          <div className="bg-slate-50 dark:bg-slate-800/20 p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-3 font-sans">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-bold text-slate-700 dark:text-slate-350">Nível do Volume de Cache Ativo:</span>
+              <span className="font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 px-2 py-0.5 rounded-md">
+                {selectedProfile === 'economy' ? '35% (Compacto)' : selectedProfile === 'standard' ? '70% (Recomendado)' : '100% (Total Histórico)'}
+              </span>
+            </div>
+            {/* Barra de Progresso */}
+            <div className="w-full bg-slate-200/70 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div 
+                className={cn(
+                  'h-full transition-all duration-500 rounded-full',
+                  selectedProfile === 'economy' ? 'bg-amber-500 w-[35%]' : selectedProfile === 'standard' ? 'bg-indigo-600 w-[70%]' : 'bg-emerald-600 w-full'
+                )}
+              />
+            </div>
+
+            {/* Configurações aplicadas reflexivas */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] text-slate-600 dark:text-slate-400 font-semibold border-t border-slate-200/50 dark:border-slate-800">
+              <div className="space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Lista de Operadores</span>
+                <p className="text-indigo-950 dark:text-indigo-200 font-bold bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 shadow-3xs">
+                  • 100% Completa (Sempre total)
+                </p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Condições de Operadores</span>
+                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                  • {selectedProfile === 'economy' ? 'Apenas ativos / com alertas' : selectedProfile === 'standard' ? 'Ativos, registados nos últimos 2 anos' : 'Todas as entidades registadas'}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Histórico de Visitas Retidas</span>
+                <p className="text-slate-800 dark:text-slate-250 bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                  • {selectedProfile === 'economy' ? 'Até 15 dias atrás' : selectedProfile === 'standard' ? 'Até 60 dias atrás' : 'Histórico Completo'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CARD DE APARÊNCIA / TEMA */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Sun className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Aparência</h3>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+            Escolha o tema visual da aplicação. A opção automática adapta-se às configurações do seu dispositivo.
+          </p>
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { id: 'auto' as const, label: 'Auto', icon: Laptop, desc: 'Sistema' },
+              { id: 'light' as const, label: 'Claro', icon: Sun, desc: 'Light Mode' },
+              { id: 'dark' as const, label: 'Escuro', icon: Moon, desc: 'Dark Mode' },
+            ].map(({ id, label, icon: Icon, desc }) => {
+              const active = theme === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setTheme(id);
+                    toast.info(`Tema alterado para ${label}`);
+                  }}
+                  className={cn(
+                    'flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer text-center',
+                    active
+                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                      : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-700 dark:hover:text-slate-350'
+                  )}
+                >
+                  <Icon className="w-5 h-5 mb-1.5" />
+                  <span className="text-xs font-bold block">{label}</span>
+                  <span className="text-[10px] opacity-70 mt-0.5">{desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {/* storage details card */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Disc className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Estado do Armazenamento e Cache</h3>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-100 dark:border-slate-800 gap-4">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-0.5">Ocupação em Disco (Estimativa de Dados)</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white">{bytesState.bytes === 0 ? 'A calcular...' : formatBytes(bytesState.bytes)}</span>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-center bg-emerald-50 dark:bg-emerald-950/20 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30 min-w-[100px]">
+                <span className="text-[9px] font-bold text-emerald-800 dark:text-emerald-450 uppercase tracking-wider block">Sincronizados (Cache)</span>
+                <span className="text-base font-extrabold text-emerald-950 dark:text-emerald-200">
+                  {stats ? (stats.syncedFirmas + stats.syncedVisitas + stats.syncedInfracoes + stats.syncedAnexos) : 0}
+                </span>
+              </div>
+              <div className="text-center bg-orange-50 dark:bg-orange-950/20 px-3 py-2 rounded-xl border border-orange-100 dark:border-orange-900/30 min-w-[100px]">
+                <span className="text-[9px] font-bold text-orange-800 dark:text-orange-455 uppercase tracking-wider block">Novos (Por Submeter)</span>
+                <span className="text-base font-extrabold text-orange-950 dark:text-orange-200">
+                  {stats ? (stats.unsyncedFirmas + stats.unsyncedVisitas + stats.unsyncedInfracoes + stats.unsyncedAnexos) : 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Operadores</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalFirmas || 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedFirmas || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novos: {stats?.unsyncedFirmas || 0}</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Fiscalizações</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalVisitas || 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedVisitas || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedVisitas || 0}</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Infrações</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalInfracoes || 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedInfracoes || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedInfracoes || 0}</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Anexos / Imagens</span>
+                <span className="text-lg font-black text-slate-800 dark:text-slate-200">{stats?.totalAnexos || 0}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-450 font-bold border-t border-slate-100 dark:border-slate-800 mt-2 pt-1.5">
+                <span className="text-emerald-600 dark:text-emerald-500">Sinc: {stats?.syncedAnexos || 0}</span>
+                <span className="text-orange-600 dark:text-orange-500">Novas: {stats?.unsyncedAnexos || 0}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* LOGS TÉCNICOS */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Bug className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Erros e Logs Técnicos</h3>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5">Registos locais recentes deste dispositivo</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              clearAppLogs();
+              toast.info('Logs técnicos limpos.');
+            }}
+            disabled={appLogs.length === 0}
+            className={cn(
+              'p-2 rounded-lg border transition-colors',
+              appLogs.length === 0
+                ? 'text-slate-300 dark:text-slate-700 border-slate-200 dark:border-slate-800 cursor-not-allowed'
+                : 'text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/20'
+            )}
+            title="Limpar logs"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5">
+          {appLogs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20 p-5 text-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Sem erros registados neste dispositivo.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+              {appLogs.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={cn(
+                    'rounded-xl border p-3',
+                    entry.level === 'error'
+                      ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/70 dark:bg-rose-950/10'
+                      : entry.level === 'warn'
+                      ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/10'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/20'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] uppercase tracking-widest font-black text-slate-500 dark:text-slate-400">{entry.scope}</span>
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                          {new Date(entry.ts).toLocaleString('pt-PT')}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-snug">{entry.message}</p>
+                    </div>
+                    <span className={cn(
+                      'text-[9px] uppercase font-black px-2 py-1 rounded-md shrink-0',
+                      entry.level === 'error'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                        : entry.level === 'warn'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                    )}>
+                      {entry.level}
+                    </span>
+                  </div>
+                  {entry.details && (
+                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 text-slate-100 p-2 text-[10px] leading-relaxed">
+                      {entry.details}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
          <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
@@ -1190,6 +1228,17 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       }
 
       localStorage.setItem('drcae_officer_nif', nif);
+
+      // Sem servidor não há lista de privilégios a receber, e a navegação
+      // inteira é filtrada por ela. A assinatura local e o canário acima já
+      // provaram que é este agente — a mesma prova que autoriza decifrar toda
+      // a cache — pelo que repor o snapshot dele é seguro. Sem isto, entrar
+      // offline depois de um logout offline deixava o agente sem menus e sem
+      // rede para os recuperar.
+      if (!restoreGrantsFromSnapshot(nif) && getStoredGrants().length === 0) {
+        addAppLog('warn', 'grants', 'Login offline sem privilégios em cache', { nif });
+      }
+
       onLogin();
     };
 
@@ -1215,8 +1264,9 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         crypto.setActiveKey(derivedKey);
 
         // 3. Autenticar no servidor
+        let loginResponse: Awaited<ReturnType<typeof api.login>>;
         try {
-          await api.login(nif, password);
+          loginResponse = await api.login(nif, password);
         } catch (err: any) {
           const isNetErr = /fetch|network|failed to fetch|networkerror/i.test(err?.message || '');
           if (isNetErr) {
@@ -1244,6 +1294,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
           );
         }
         await db.setupOfflineCanary();
+        await persistLoginAvatar(loginResponse.officer);
         const sigHex = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
         localStorage.setItem(`drcae_local_cred_${nif}`, JSON.stringify({ sigHex, saltHex: salt }));
         localStorage.setItem('drcae_officer_nif', nif);
@@ -1684,15 +1735,7 @@ export default function App() {
     setIsAuthenticated(true);
     setSessionState('valid');
     if (api.getJwtToken() && await checkServerReachable()) {
-      try {
-        const assetsData = await api.getAssets();
-        localStorage.setItem('drcae_officers_list', JSON.stringify(assetsData.officers || []));
-        localStorage.setItem('drcae_assets', JSON.stringify(assetsData.assets || []));
-        localStorage.setItem('drcae_infractions', JSON.stringify(assetsData.infractions || []));
-        localStorage.setItem('drcae_branches', JSON.stringify(assetsData.branches || []));
-      } catch (err) {
-        console.warn('[drcae] Falha ao obter dados de referência; a usar cache anterior.', err);
-      }
+      await refreshReferenceAssets();
       try {
         await triggerFullSync();
       } catch (err) {
@@ -1802,6 +1845,10 @@ export default function App() {
           </Route>
 
           <Route path="equipe" element={<Equipe />} />
+          <Route path="utilizadores" element={<Utilizadores />} />
+
+          <Route path="apreensoes" element={<Apreensoes />} />
+          <Route path="apreensoes/:uid" element={<ApreensaoDetailPage />} />
 
           <Route path="mapa" element={<Mapa />} />
 

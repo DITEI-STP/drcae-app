@@ -197,9 +197,10 @@ export async function login(nif: string, password: string): Promise<any> {
   if (response.officer) {
     localStorage.setItem('drcae_officer_info', JSON.stringify(response.officer));
   }
-  if (Array.isArray(response.grants)) {
-    setStoredGrants(response.grants);
-  }
+  // Antes dos grants: o snapshot «last known good» é gravado por NIF, e é ele
+  // que repõe os menus no login offline seguinte.
+  localStorage.setItem('drcae_officer_nif', nif);
+  setStoredGrants(response.grants, response.grants_state);
   return response;
 }
 
@@ -246,12 +247,15 @@ export async function logout(): Promise<void> {
     console.error('Erro ao chamar logout no servidor:', err);
   } finally {
     setJwtToken(null);
+    // Limpa a lista activa mas preserva o snapshot por agente: sem rede, o
+    // `POST auth/logout` falha e este `finally` corria na mesma, deixando o
+    // login offline seguinte — que nunca reemitia grants — sem menu nenhum.
     clearStoredGrants();
   }
 }
 
 // 5. Pull Sync (silent: falha de auth não faz logout)
-export async function pullSync(since: string | null, profile = 'standard'): Promise<any> {
+export async function pullSync(since: string | null, profile = 'maximum'): Promise<any> {
   const deviceId = getDeviceId();
   const params = new URLSearchParams({
     device_id: deviceId,
@@ -263,6 +267,27 @@ export async function pullSync(since: string | null, profile = 'standard'): Prom
   return request(`sync/pull?${params.toString()}`, {}, true);
 }
 
+/** Descarrega um avatar protegido; os bytes são persistidos pelo avatarCache. */
+export async function downloadAvatar(downloadUrl: string): Promise<Blob> {
+  const endpoint = /^https?:\/\//i.test(downloadUrl)
+    ? downloadUrl
+    : /^https?:\/\//i.test(API_BASE)
+      ? new URL(downloadUrl, new URL(API_BASE).origin).toString()
+      : downloadUrl;
+  const execute = () => fetch(endpoint, {
+    headers: {
+      Authorization: getJwtToken() || '',
+      'X-Device-Id': getDeviceId(),
+    },
+  });
+  let response = await execute();
+  if (response.status === 401 && await refreshSilent()) response = await execute();
+  if (!response.ok) {
+    throw new Error(`Avatar indisponível (${response.status}).`);
+  }
+  return response.blob();
+}
+
 // 6. Push Sync (silent: falha de auth não faz logout)
 export async function pushSync(payload: any): Promise<any> {
   return request('sync/push', {
@@ -271,6 +296,28 @@ export async function pushSync(payload: any): Promise<any> {
       device_id: getDeviceId(),
       ...payload,
     }),
+  }, true);
+}
+
+/**
+ * Envia o fotograma de pré-visualização de um vídeo.
+ *
+ * Vai uma vez, com o anexo. Sem ele, quem abre a fiscalização noutro
+ * dispositivo teria de descarregar o vídeo inteiro para mostrar a miniatura.
+ */
+export async function uploadSyncAttachmentPoster(input: {
+  id: string;
+  visitaId: string;
+  blob: Blob;
+}): Promise<{ file_ref: string; url?: string }> {
+  return rawRequest(`sync/attachments/${encodeURIComponent(input.id)}/poster`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'X-Device-Id': getDeviceId(),
+      'X-Visita-Id': input.visitaId,
+    },
+    body: input.blob,
   }, true);
 }
 
@@ -334,7 +381,7 @@ export async function getOperatorSupply(operatorUid: string): Promise<{ bookStat
 }
 
 // 9. Exportar pacote offline manual
-export async function exportPackage(profile = 'standard'): Promise<any> {
+export async function exportPackage(profile = 'maximum'): Promise<any> {
   return request('sync/export', {
     method: 'POST',
     body: JSON.stringify({ profile }),

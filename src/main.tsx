@@ -7,6 +7,7 @@ import { ThemeProvider } from './hooks/useTheme.tsx';
 import { addAppLog } from './lib/appLogs.ts';
 import { setUpdateRegistration, startAppUpdateWatcher } from './lib/appUpdate.ts';
 import './lib/deviceWipe.ts';
+import AppErrorBoundary from './components/AppErrorBoundary';
 
 window.addEventListener('error', (event) => {
   addAppLog('error', 'runtime', event.message, event.error || {
@@ -48,7 +49,9 @@ if (savedTheme === 'dark') {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
     </ThemeProvider>
   </StrictMode>,
 );

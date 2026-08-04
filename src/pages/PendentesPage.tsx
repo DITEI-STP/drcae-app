@@ -9,6 +9,7 @@ import { db } from '../db/db';
 import { triggerFullSync } from '../lib/sync';
 import { useSyncState } from '../lib/syncState';
 import type { Firma, Visita, Infracao, Anexo } from '../db/db';
+import { isRascunho } from '../lib/visitaDraft';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export default function PendentesPage() {
   const pendentes = useLiveQuery(async () => {
     const [firmas, visitas, infracoes, anexos] = await Promise.all([
       db.firmas.filter(x => !x.synced).toArray(),
-      db.visitas.filter(x => !x.synced).toArray(),
+      db.visitas.filter(x => !x.synced && !isRascunho(x)).toArray(),
       db.infracoes.filter(x => !x.synced).toArray(),
       db.anexos.filter(x => !x.synced).toArray(),
     ]);

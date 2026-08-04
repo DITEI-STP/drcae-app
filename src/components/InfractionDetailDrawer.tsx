@@ -1,65 +1,94 @@
 import React, { useEffect, useState } from 'react';
-import { X, AlertTriangle, BookOpen, History, TrendingUp } from 'lucide-react';
+import { X, AlertTriangle, BookOpen, History, TrendingUp, Scale } from 'lucide-react';
 import { db } from '../db/db';
 import { cn } from '../lib/utils';
+import { recidivismLabel } from '../lib/recidivism';
+import { formatPenaltyRange, severityClasses } from '../lib/infractionCatalog';
+import { tecnicoNames } from '../lib/inspectionModel';
+import { semRascunhos } from '../lib/visitaDraft';
 
 interface InfractionItem {
   type: string;
   severity: string;
+  severityLevel?: number | null;
   legalInstrument?: string;
   details?: string;
+  penaltyMin?: number | null;
+  penaltyMax?: number | null;
 }
 
 interface InfractionDetailDrawerProps {
+  /**
+   * Abrir uma fiscalização do histórico. Quem passa isto é responsável por
+   * gravar o registo em curso antes de navegar — ver `useReturnAnchor`.
+   */
+  onOpenInspection?: (visitaId: string) => void;
   infraction: InfractionItem | null;
+  /**
+   * Operador em vistoria. O histórico é **deste** operador — a consulta era
+   * global a todos os operadores, o que tornava o nível apresentado aqui
+   * diferente do da listagem, para a mesma infracção e no mesmo ecrã.
+   */
+  firmaId?: string | null;
   onClose: () => void;
 }
 
-interface RecidivismEntry {
+interface OccurrenceEntry {
+  visitaId: string;
   date: string;
-  firmaName: string;
+  time: string;
+  code: string;
+  team: string;
 }
 
-function getRecidivismLevel(count: number): { label: string; color: string } {
-  if (count === 0) return { label: 'Sem Registo', color: 'text-slate-500 bg-slate-100 dark:bg-slate-800' };
-  if (count <= 2) return { label: 'Baixo', color: 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300' };
-  if (count <= 5) return { label: 'Médio', color: 'text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300' };
-  return { label: 'Alto', color: 'text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-300' };
-}
-
-const severityColors: Record<string, string> = {
-  Alta: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
-  Média: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
-  Baixa: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
-};
-
-export default function InfractionDetailDrawer({ infraction, onClose }: InfractionDetailDrawerProps) {
-  const [recidivismCount, setRecidivismCount] = useState(0);
-  const [history, setHistory] = useState<RecidivismEntry[]>([]);
+export default function InfractionDetailDrawer({ infraction, firmaId, onOpenInspection, onClose }: InfractionDetailDrawerProps) {
+  const [occurrences, setOccurrences] = useState<OccurrenceEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!infraction) return;
     setLoading(true);
     (async () => {
-      const matches = await db.infracoes.filter(i => i.type === infraction.type).toArray();
-      setRecidivismCount(matches.length);
-      const entries: RecidivismEntry[] = [];
-      for (const m of matches.slice(-5).reverse()) {
-        const visita = m.visitaId ? await db.visitas.get(m.visitaId) : null;
-        const firma = visita?.firmaId ? await db.firmas.get(visita.firmaId) : null;
-        entries.push({
-          date: visita?.date || '—',
-          firmaName: firma?.name || 'Firma desconhecida',
-        });
+      // Sem operador seleccionado não há histórico a apresentar: um histórico
+      // global não diz nada sobre a reincidência deste operador.
+      if (!firmaId) {
+        setOccurrences([]);
+        return;
       }
-      setHistory(entries);
+
+      const visitas = semRascunhos(await db.visitas.where('firmaId').equals(firmaId).toArray());
+      const byId = new Map(visitas.map((v) => [v.id!, v]));
+      const matches = await db.infracoes
+        .filter((i) => i.type === infraction.type && byId.has(i.visitaId))
+        .toArray();
+
+      const entries: OccurrenceEntry[] = matches
+        .map((m) => {
+          const visita = byId.get(m.visitaId);
+          return {
+            visitaId: m.visitaId,
+            date: visita?.date || '—',
+            time: visita?.time || '',
+            code: visita?.officialCode || visita?.offlineCode || '—',
+            team: tecnicoNames(visita?.technicians).join(', '),
+          };
+        })
+        .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+
+      setOccurrences(entries);
     })().finally(() => setLoading(false));
-  }, [infraction?.type]);
+  }, [infraction?.type, firmaId]);
 
   if (!infraction) return null;
 
-  const level = getRecidivismLevel(recidivismCount);
+  // Mesma função e mesmo âmbito (operador) da listagem do formulário. Havia
+  // aqui uma segunda escala — Sem Registo / Baixo / Médio / Alto — global a
+  // todos os operadores: duas escalas para o mesmo conceito no mesmo ecrã.
+  const badge = recidivismLabel(occurrences.length);
+  const penaltyRange = formatPenaltyRange(
+    infraction.penaltyMin ?? null,
+    infraction.penaltyMax ?? null,
+  );
 
   return (
     <>
@@ -77,7 +106,7 @@ export default function InfractionDetailDrawer({ infraction, onClose }: Infracti
         <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex-1 pr-4">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider', severityColors[infraction.severity] || 'bg-slate-100 text-slate-700')}>
+              <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider', severityClasses(infraction.severityLevel))}>
                 {infraction.severity}
               </span>
             </div>
@@ -90,22 +119,44 @@ export default function InfractionDetailDrawer({ infraction, onClose }: Infracti
 
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Reincidência */}
+          {/* Incidência neste operador */}
           <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Nível de Reincidência</span>
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Incidência neste Operador</span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={cn('text-sm font-bold px-3 py-1.5 rounded-xl', level.color)}>
-                {level.label}
-              </span>
+            <div className="flex items-center gap-3 flex-wrap">
+              {badge ? (
+                <span className={cn('text-sm font-bold px-3 py-1.5 rounded-xl', badge.className)}>
+                  {badge.label}
+                </span>
+              ) : (
+                <span className="text-sm font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                  Sem registo
+                </span>
+              )}
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                {recidivismCount === 0
-                  ? 'Primeira ocorrência registada'
-                  : `${recidivismCount} ocorrência${recidivismCount !== 1 ? 's' : ''} registada${recidivismCount !== 1 ? 's' : ''} localmente`}
+                {occurrences.length === 0
+                  ? 'Nunca aplicada a este operador'
+                  : `${occurrences.length} fiscalização${occurrences.length !== 1 ? 'ões' : ''} anterior${occurrences.length !== 1 ? 'es' : ''}`}
               </span>
             </div>
+          </div>
+
+          {/* Moldura legal — leitura. O agente conhece-a; não a define. */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Scale className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Coima Aplicável</span>
+            </div>
+            <p className={cn(
+              'text-sm rounded-xl px-4 py-3 font-medium',
+              penaltyRange
+                ? 'text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800'
+                : 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 italic'
+            )}>
+              {penaltyRange ?? 'Moldura não definida no catálogo.'}
+            </p>
           </div>
 
           {/* Enquadramento Legal */}
@@ -113,7 +164,7 @@ export default function InfractionDetailDrawer({ infraction, onClose }: Infracti
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <BookOpen className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Enquadramento Legal</span>
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Instrumento Jurídico</span>
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3 font-medium">
                 {infraction.legalInstrument}
@@ -132,19 +183,35 @@ export default function InfractionDetailDrawer({ infraction, onClose }: Infracti
             </div>
           )}
 
-          {/* Histórico */}
-          {!loading && history.length > 0 && (
+          {/* Fiscalizações anteriores deste operador */}
+          {!loading && occurrences.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <History className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Últimas Ocorrências</span>
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Fiscalizações Anteriores</span>
               </div>
               <div className="space-y-2">
-                {history.map((h, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                    <span className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[70%]">{h.firmaName}</span>
-                    <span className="text-slate-400 font-mono shrink-0 ml-2">{h.date}</span>
-                  </div>
+                {occurrences.map((o) => (
+                  <button
+                    key={o.visitaId}
+                    type="button"
+                    disabled={!onOpenInspection}
+                    onClick={() => onOpenInspection?.(o.visitaId)}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl transition-colors',
+                      onOpenInspection && 'hover:bg-slate-100 dark:hover:bg-slate-750 cursor-pointer'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{o.code}</span>
+                      <span className="text-[11px] text-slate-400 shrink-0">
+                        {o.date}{o.time ? ` · ${o.time}` : ''}
+                      </span>
+                    </div>
+                    {o.team && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate">{o.team}</p>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
