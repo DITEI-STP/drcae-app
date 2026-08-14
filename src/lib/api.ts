@@ -3,6 +3,7 @@ import { addAppLog } from './appLogs';
 import type { AppLogEntry } from './appLogs';
 import { setStoredGrants, clearStoredGrants } from './grants';
 import { storeDeviceIdentity } from './pairing';
+import { storeOfflineOfficerSnapshot } from './offlineCredentialVault';
 
 const AUTH_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/auth';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api') + '/app';
@@ -196,6 +197,7 @@ export async function login(nif: string, password: string): Promise<any> {
   }
   if (response.officer) {
     localStorage.setItem('drcae_officer_info', JSON.stringify(response.officer));
+    storeOfflineOfficerSnapshot(nif, response.officer);
   }
   // Antes dos grants: o snapshot «last known good» é gravado por NIF, e é ele
   // que repõe os menus no login offline seguinte.
@@ -252,6 +254,16 @@ export async function logout(): Promise<void> {
     // login offline seguinte — que nunca reemitia grants — sem menu nenhum.
     clearStoredGrants();
   }
+}
+
+export async function validateOfflineCredentials(credentials: Array<{
+  nif: string;
+  credential_version: string;
+}>): Promise<{ credentials: Array<{ nif: string; valid: boolean }> }> {
+  return request('auth/offline-credentials/validate', {
+    method: 'POST',
+    body: JSON.stringify({ credentials }),
+  }, true);
 }
 
 // 5. Pull Sync (silent: falha de auth não faz logout)

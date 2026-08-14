@@ -17,6 +17,34 @@ import { syncUtilizadoresCatalog } from './utilizadoresCatalog';
 import { toast } from './notifications';
 import { syncRepresentantes } from './representantesCache';
 import { tecnicoNames } from './inspectionModel';
+import {syncReleasedComplaints} from './syncReleasedComplaints';
+import {
+  invalidateOfflineCredentials,
+  listOfflineCredentialVersions,
+} from './offlineCredentialVault';
+
+async function validateCachedOfflineCredentials(): Promise<boolean> {
+  const claims = listOfflineCredentialVersions();
+  if (claims.length === 0) return true;
+  const response = await api.validateOfflineCredentials(claims);
+  const invalidated = invalidateOfflineCredentials(response.credentials ?? []);
+  if (invalidated.length === 0) return true;
+
+  const currentNif = localStorage.getItem('drcae_officer_nif')?.trim();
+  addAppLog('warn', 'auth', 'Credenciais offline revogadas após validação no servidor', {
+    nifs: invalidated,
+  });
+  if (currentNif && invalidated.includes(currentNif)) {
+    api.setJwtToken(null);
+    window.dispatchEvent(new Event('auth-expired'));
+    return false;
+  }
+  toast.info(
+    `${invalidated.length} credencial${invalidated.length === 1 ? '' : 'is'} offline ` +
+    `de outro agente ${invalidated.length === 1 ? 'foi removida' : 'foram removidas'} por alteração no servidor.`,
+  );
+  return true;
+}
 
 // String.fromCharCode(...array) falha com arrays > ~65k elementos.
 // Esta versão itera em chunks para suportar ficheiros de qualquer tamanho.
@@ -228,6 +256,7 @@ export async function syncPull(profile?: string): Promise<number> {
   await syncAgentesCatalog(response.agentes, response.agentes_state);
   await syncUtilizadoresCatalog(response.utilizadores, response.utilizadores_state);
   await syncRepresentantes(response.representantes);
+  count += await syncReleasedComplaints(db.denuncias, response);
   const avatarSync = await syncAvatarCache(
     response.avatar_manifest,
     response.avatar_manifest_state,
@@ -524,6 +553,14 @@ export async function triggerFullSync(profile = 'maximum'): Promise<{ pulled: nu
         throw err;
       }
       totalPulled += pulled;
+
+      // Confirma no servidor, por versão opaca do token PASSWORD, que cada
+      // credencial offline guardada continua ligada à senha em vigor. Nem a
+      // senha nem o hash bcrypt/Argon do servidor atravessam esta fronteira.
+      if (!(await validateCachedOfflineCredentials())) {
+        patchSyncState({ phase: 'needs-auth', needsAuth: true, endedAt: Date.now() });
+        return { pulled: totalPulled, pushed: totalPushed, errors: allErrors, needsAuth: true };
+      }
 
       // 3. Dados de referência (`asset`): nacionalidades, tipos de documento,
       // unidades de medida e ramos. Só eram escritos no login, pelo que um

@@ -14,13 +14,18 @@ import ReconhecimentoCobertura from './ReconhecimentoCobertura';
 import EvidenciaPreview, { isVideo } from '../../../components/EvidenciaPreview';
 import VideoThumb from '../../../components/VideoThumb';
 import RevisaoApreensaoPrecos from './RevisaoApreensaoPrecos';
+import ComplaintReviewCard from './ComplaintReviewCard';
+import type { ComplaintVerification, DenunciaCampo } from '../../../db/db';
 
 /**
  * Revisão final e auto-certificação, antes de lavrar a acta.
  *
  * O estado vive no componente-pai e chega por contexto — ver `../context.ts`.
  */
-export default function StepRevisao() {
+export default function StepRevisao({ complaint, verification }: {
+  complaint?: DenunciaCampo;
+  verification: ComplaintVerification | null;
+}) {
   const {
     anexos,
     atividadeEconomica,
@@ -198,6 +203,8 @@ export default function StepRevisao() {
      </div>
 
      <RevisaoApreensaoPrecos />
+
+     <ComplaintReviewCard complaint={complaint} verification={verification} evidenceCount={anexos.length} />
 
      {/* Recomendações Emitidas */}
      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs font-sans text-left">

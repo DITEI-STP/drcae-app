@@ -8,6 +8,7 @@
 export const STEP_LABELS: Record<string, string> = {
   operador: 'Operador',
   equipa: 'Equipa',
+  denuncia: 'Averiguação da denúncia',
   tela: 'Constatações',
   infracoes: 'Infrações',
   apreensao: 'Apreensão',

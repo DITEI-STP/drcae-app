@@ -210,6 +210,45 @@ export async function deriveLocalSignature(
   return bytesToHex(new Uint8Array(bits));
 }
 
+// Chave distinta da assinatura armazenada. Reutilizar `sigHex` para cifrar a
+// chave do cofre permitiria a quem lesse o localStorage abri-lo sem conhecer a
+// palavra-passe.
+export async function deriveLocalWrappingKey(
+  nif: string,
+  password: string,
+  deviceId: string,
+): Promise<AppCryptoKey> {
+  const enc = new TextEncoder();
+  const material = await globalThis.crypto.subtle.importKey(
+    'raw',
+    enc.encode(`${nif}:${password}`),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await globalThis.crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: enc.encode(`${deviceId}:${nif}:offline-vault:v2`),
+      iterations: 600000,
+    },
+    material,
+    256,
+  );
+  const bytes = new Uint8Array(bits);
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    return { type: 'fallback', hash: bytes };
+  }
+  return crypto.subtle.importKey(
+    'raw',
+    bytes,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
 export async function restoreSessionKey(hex: string): Promise<AppCryptoKey> {
   const bytes = hexToBytes(hex);
   if (typeof crypto === 'undefined' || !crypto.subtle) {
@@ -225,4 +264,3 @@ export async function restoreSessionKey(hex: string): Promise<AppCryptoKey> {
   );
   return activeKey;
 }
-

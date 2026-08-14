@@ -14,6 +14,11 @@ import * as crypto from './crypto';
 import { db } from '../db/db';
 import { getDeviceId } from './api';
 import { addAppLog } from './appLogs';
+import {
+  activateOfflineVault,
+  getOfflineCredential,
+  unlockOfflineCredential,
+} from './offlineCredentialVault';
 
 export interface UnlockResult {
   ok: boolean;
@@ -41,32 +46,20 @@ export async function unlockWithPassword(
   nif: string,
   password: string,
 ): Promise<UnlockResult> {
-  const stored = localStorage.getItem(`drcae_local_cred_${nif}`);
-  if (!stored) {
+  if (!getOfflineCredential(nif)) {
     return {
       ok: false,
       error: 'Sem credenciais offline para este agente. Ligue-se à rede e inicie sessão.',
     };
   }
 
-  let sigHex: string;
-  let saltHex: string;
   try {
-    ({ sigHex, saltHex } = JSON.parse(stored) as {
-      sigHex: string;
-      saltHex: string;
-    });
-  } catch {
-    return { ok: false, error: 'Credenciais locais ilegíveis. Inicie sessão com rede.' };
-  }
-
-  try {
-    const testSig = await crypto.deriveLocalSignature(nif, password, getDeviceId());
-    if (testSig !== sigHex) {
+    const vaultKey = await unlockOfflineCredential(nif, password, getDeviceId());
+    if (!vaultKey) {
       return { ok: false, error: 'Palavra-passe incorrecta.' };
     }
 
-    crypto.setActiveKey(await crypto.deriveKey(nif, password, saltHex));
+    await activateOfflineVault(vaultKey);
 
     if (!(await db.verifyOfflineKey())) {
       crypto.setActiveKey(null);

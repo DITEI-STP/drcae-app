@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radar as RadarIcon, MapPinOff } from 'lucide-react';
+import { Flame, Radar as RadarIcon, MapPinOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useGeoLocation } from '../lib/geo';
 import { useDeviceHeading, useUnwrappedHeading } from '../lib/deviceHeading';
@@ -13,6 +13,7 @@ import {
   buildInfracoesCountByVisita,
   groupVisitasByFirma,
 } from '../lib/firmaRisk';
+import { useComplaintRadar } from '../lib/useComplaintRadar';
 
 // Operadores mostrados. Acima disto o radar fica ilegível num ecrã de tablet,
 // e os mais distantes deixam de ser accionáveis a pé.
@@ -82,6 +83,7 @@ export default function NearbyOperatorsRadar() {
   // Fonte partilhada com o Dashboard: ler as tabelas aqui outra vez duplicaria
   // ~1760 desencriptações por render (ver operadoresCache).
   const { data, loading } = useOperadores();
+  const complaintRadar = useComplaintRadar();
 
   const nearby = useMemo(() => {
     if (!coords) return [];
@@ -100,6 +102,7 @@ export default function NearbyOperatorsRadar() {
           name: firma.name,
           risk,
           pendingRecommendations: hasPendingRecommendations(visitas),
+          complaintCount: complaintRadar.byOperator.get(firma.id!) ?? 0,
           distanceKm: calculateDistanceKm(coords, target),
           bearing: calculateBearing(coords, target),
         };
@@ -107,7 +110,7 @@ export default function NearbyOperatorsRadar() {
       .filter((operator) => operator.distanceKm <= MAX_RADIUS_KM)
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, MAX_OPERATORS);
-  }, [data, coords]);
+  }, [data, coords, complaintRadar.byOperator]);
 
   // A escala acompanha o mais distante mostrado, com uma margem para o ponto
   // não ficar colado ao anel exterior.
@@ -235,7 +238,7 @@ export default function NearbyOperatorsRadar() {
                     style={{ cursor: 'pointer' }}
                   >
                     <title>
-                      {`${operator.name} — ${formatDistance(operator.distanceKm)} — ${RISK_PRESENTATION[operator.risk].label}`}
+                      {`${operator.name} — ${formatDistance(operator.distanceKm)} — ${RISK_PRESENTATION[operator.risk].label}${operator.complaintCount ? ` — ${operator.complaintCount} denúncia(s) por averiguar` : ''}`}
                     </title>
                     {/* Alvo de toque generoso, invisível: os pontos são
                         pequenos demais para um dedo. */}
@@ -258,6 +261,17 @@ export default function NearbyOperatorsRadar() {
                         da lista de firmas: vermelho com infrações, âmbar com
                         inconformidades, verde regularizado, cinza sem visitas. */}
                     <circle cx={x} cy={y} r={4.5} fill={RISK_PRESENTATION[operator.risk].color} />
+                    {operator.complaintCount > 0 && (
+                      <text
+                        x={x + 5}
+                        y={y - 5}
+                        transform={`rotate(${angle} ${x + 5} ${y - 5})`}
+                        style={{ fontSize: 10, transition: TERRAIN_TRANSITION }}
+                        aria-label={`${operator.complaintCount} denúncias por averiguar`}
+                      >
+                        🔥
+                      </text>
+                    )}
                   </g>
                 );
               })}
@@ -301,6 +315,13 @@ export default function NearbyOperatorsRadar() {
                         {operator.pendingRecommendations && (
                           <span className="text-blue-500 dark:text-blue-400">
                             {' · recomendações por averiguar'}
+                          </span>
+                        )}
+                        {operator.complaintCount > 0 && (
+                          <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                            {' · '}
+                            <Flame className="inline h-3 w-3" />
+                            {operator.complaintCount} por averiguar
                           </span>
                         )}
                       </span>

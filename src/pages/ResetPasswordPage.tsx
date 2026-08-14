@@ -73,9 +73,9 @@ export default function ResetPasswordPage() {
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-left">
               <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
               <p className="text-[11px] text-amber-700 font-semibold leading-relaxed">
-                Os dados guardados offline no dispositivo estavam cifrados com a palavra-passe
-                anterior. Na próxima sessão com ligação ao servidor, a cache local é refeita a
-                partir do servidor.
+                A credencial offline anterior será invalidada na próxima sincronização. Inicie
+                sessão uma vez com ligação ao servidor para autorizar esta nova palavra-passe
+                também no modo offline, sem apagar a cache partilhada do dispositivo.
               </p>
             </div>
             <a

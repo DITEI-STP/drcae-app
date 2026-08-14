@@ -16,9 +16,10 @@ import VisitaDetail from './pages/VisitaDetail';
 import Mapa from './pages/Mapa';
 import Central from './pages/Central';
 import Equipe from './pages/Equipe';
-import Utilizadores from './pages/Utilizadores';
 import PendentesPage from './pages/PendentesPage';
 import Apreensoes, { ApreensaoDetailPage } from './pages/Apreensoes';
+import Denuncias from './pages/Denuncias';
+import DenunciaDetail from './pages/DenunciaDetail';
 import SetupPage from './pages/SetupPage';
 import { db } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -49,6 +50,14 @@ import { addAppLog, clearAppLogs, getAppLogs, getPendingAppLogs, markAppLogsSync
 import { getStoredGrants, restoreGrantsFromSnapshot } from './lib/grants';
 import { readSupplyDiagnostics, type SupplyDiagnostics } from './lib/supplyCache';
 import { persistLoginAvatar } from './lib/avatarCache';
+import {
+  activateOfflineVault,
+  enrollOfflineCredential,
+  getOfflineCredential,
+  OFFLINE_VAULT_MARKER,
+  restoreOfflineOfficerSnapshot,
+  unlockOfflineCredential,
+} from './lib/offlineCredentialVault';
 
 const APP_LOGO_SRC = '/app/img/logo.png';
 
@@ -187,13 +196,7 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
     const nif = localStorage.getItem('drcae_officer_nif') || '';
     try {
       setPinError('A validar...');
-      const saltRes = await api.getSalt();
-      const testKey = await crypto.deriveKey(nif, pinInput, saltRes.salt);
-      
-      const prevKey = crypto.getActiveKey();
-      crypto.setActiveKey(testKey);
-      const isCorrect = await db.verifyOfflineKey();
-      crypto.setActiveKey(prevKey);
+      const isCorrect = Boolean(await unlockOfflineCredential(nif, pinInput, api.getDeviceId()));
 
       if (isCorrect) {
         setPinError('');
@@ -1203,22 +1206,17 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 
     // Verificação offline: assinatura local independente do servidor
     const doOfflineLogin = async () => {
-      const stored = localStorage.getItem(`drcae_local_cred_${nif}`);
-      if (!stored) {
+      if (!getOfflineCredential(nif)) {
         setError('Sem credenciais offline para este agente. Conecte-se à rede e inicie sessão uma primeira vez.');
         return;
       }
-      const { sigHex: storedSig, saltHex } = JSON.parse(stored) as { sigHex: string; saltHex: string };
-
-      const testSig = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
-      if (testSig !== storedSig) {
+      const vaultKey = await unlockOfflineCredential(nif, password, api.getDeviceId());
+      if (!vaultKey) {
         setError('Palavra-passe incorreta.');
         return;
       }
 
-      // Credenciais confirmadas — re-derivar chave AES e verificar canary
-      const derivedKey = await crypto.deriveKey(nif, password, saltHex);
-      crypto.setActiveKey(derivedKey);
+      await activateOfflineVault(vaultKey);
 
       const ok = await db.verifyOfflineKey();
       if (!ok) {
@@ -1228,6 +1226,11 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       }
 
       localStorage.setItem('drcae_officer_nif', nif);
+      if (!restoreOfflineOfficerSnapshot(nif)) {
+        setError('Identidade offline incompleta. Conecte-se à rede e inicie sessão novamente.');
+        crypto.setActiveKey(null);
+        return;
+      }
 
       // Sem servidor não há lista de privilégios a receber, e a navegação
       // inteira é filtrada por ela. A assinatura local e o canário acima já
@@ -1247,21 +1250,24 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 
       if (isOnline) {
         // ── CAMINHO ONLINE ────────────────────────────────────────────────
-        // 1. Obter salt do servidor
-        let salt: string;
-        try {
-          const saltRes = await api.getSalt();
-          salt = saltRes.salt;
-          localStorage.setItem('drcae_cached_salt', salt);
-        } catch {
-          // getSalt falhou com rede — tratar como offline
-          await doOfflineLogin();
-          return;
+        // A derivação Argon antiga só é necessária uma vez, para recifrar uma
+        // cache anterior ao cofre multiagente. Nos logins normais, o servidor
+        // entrega directamente a chave do dispositivo após autenticar.
+        const vaultInitialized = localStorage.getItem(OFFLINE_VAULT_MARKER) === api.getDeviceId();
+        let legacyKey: crypto.AppCryptoKey | null = null;
+        if (!vaultInitialized) {
+          try {
+            const saltRes = await api.getSalt();
+            localStorage.setItem('drcae_cached_salt', saltRes.salt);
+            legacyKey = await crypto.deriveKey(nif, password, saltRes.salt);
+            crypto.setActiveKey(legacyKey);
+          } catch {
+            await doOfflineLogin();
+            return;
+          }
         }
-
-        // 2. Derivar chave AES localmente
-        const derivedKey = await crypto.deriveKey(nif, password, salt);
-        crypto.setActiveKey(derivedKey);
+        const previousNif = localStorage.getItem('drcae_officer_nif');
+        const previousOfficerInfo = localStorage.getItem('drcae_officer_info');
 
         // 3. Autenticar no servidor
         let loginResponse: Awaited<ReturnType<typeof api.login>>;
@@ -1279,24 +1285,58 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
           return;
         }
 
-        // 4. Sucesso online: se a cache local foi cifrada com outra
-        //    palavra-passe (tipicamente após uma recuperação de senha), a
-        //    chave derivada agora já não a decifra — descartá-la é a única
-        //    saída, e o sync seguinte repõe os dados a partir do servidor.
-        if (!(await db.verifyOfflineKey())) {
-          const orphanCount = await countUnsyncedRecords();
-          await db.resetEncryptedData();
-          customAlert.warning(
-            'Cache local reposta',
-            orphanCount > 0
-              ? `A palavra-passe mudou desde a última sessão neste dispositivo. Os dados guardados localmente estavam cifrados com a anterior e foram descartados — incluindo ${orphanCount} registo(s) que ainda não tinham sido sincronizados.`
-              : 'A palavra-passe mudou desde a última sessão neste dispositivo. Os dados guardados localmente foram repostos a partir do servidor.',
-          );
+        const vaultKey = loginResponse.offline_vault_key;
+        const credentialVersion = loginResponse.credential_version;
+        if (typeof vaultKey !== 'string' || typeof credentialVersion !== 'string') {
+          await api.logout();
+          setError('O servidor precisa de ser actualizado para suportar acesso offline multiagente.');
+          crypto.setActiveKey(null);
+          return;
+        }
+
+        const hasCanary = await db.hasOfflineCanary();
+        if (!vaultInitialized && hasCanary) {
+          if (!legacyKey) throw new Error('Chave da cache legada indisponível.');
+          const legacyKeyIsValid = await db.verifyOfflineKey();
+          if (legacyKeyIsValid) {
+            await activateOfflineVault(vaultKey);
+            const vaultCryptoKey = crypto.getActiveKey();
+            if (!vaultCryptoKey) throw new Error('Não foi possível activar o cofre offline.');
+            await db.rekeyEncryptedData(legacyKey, vaultCryptoKey);
+          } else if (previousNif && previousNif.trim() !== nif.trim()) {
+            await api.logout();
+            if (previousOfficerInfo) localStorage.setItem('drcae_officer_info', previousOfficerInfo);
+            localStorage.setItem('drcae_officer_nif', previousNif);
+            crypto.setActiveKey(null);
+            setError(`Antes da primeira troca, o agente ${previousNif} deve iniciar sessão uma vez com rede para actualizar a cache segura do dispositivo.`);
+            return;
+          } else {
+            const orphanCount = await countUnsyncedRecords();
+            await activateOfflineVault(vaultKey);
+            await db.resetEncryptedData();
+            customAlert.warning(
+              'Cache local reposta',
+              orphanCount > 0
+                ? `A palavra-passe mudou desde a última sessão neste dispositivo. Foram descartados ${orphanCount} registo(s) ainda não sincronizado(s), que já não podiam ser decifrados.`
+                : 'A palavra-passe mudou desde a última sessão. A cache local será reposta a partir do servidor.',
+            );
+          }
+        } else {
+          await activateOfflineVault(vaultKey);
+          if (hasCanary && !(await db.verifyOfflineKey())) {
+            throw new Error('A chave segura deste dispositivo deixou de corresponder à cache local.');
+          }
         }
         await db.setupOfflineCanary();
+        localStorage.setItem(OFFLINE_VAULT_MARKER, api.getDeviceId());
+        await enrollOfflineCredential(
+          nif,
+          password,
+          api.getDeviceId(),
+          vaultKey,
+          credentialVersion,
+        );
         await persistLoginAvatar(loginResponse.officer);
-        const sigHex = await crypto.deriveLocalSignature(nif, password, api.getDeviceId());
-        localStorage.setItem(`drcae_local_cred_${nif}`, JSON.stringify({ sigHex, saltHex: salt }));
         localStorage.setItem('drcae_officer_nif', nif);
         onLogin();
 
@@ -1305,6 +1345,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         await doOfflineLogin();
       }
     } catch (err: any) {
+      if (api.getJwtToken()) await api.logout().catch(() => undefined);
       setError(err.message || 'Erro ao processar autenticação.');
       crypto.setActiveKey(null);
     } finally {
@@ -1844,9 +1885,12 @@ export default function App() {
             <Route path=":id" element={<VisitaDetail />} />
           </Route>
 
-          <Route path="equipe" element={<Equipe />} />
-          <Route path="utilizadores" element={<Utilizadores />} />
+          <Route path="denuncias">
+            <Route index element={<Denuncias />} />
+            <Route path=":uid" element={<DenunciaDetail />} />
+          </Route>
 
+          <Route path="equipe" element={<Equipe />} />
           <Route path="apreensoes" element={<Apreensoes />} />
           <Route path="apreensoes/:uid" element={<ApreensaoDetailPage />} />
 

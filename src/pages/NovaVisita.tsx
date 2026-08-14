@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useGeoLocation } from '../lib/geo';
 import { AlertTriangle, ArrowLeft, Users } from 'lucide-react';
 import type { MapProvider } from '../components/map/MapLayerSwitcher';
 
-import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica, type Custody, type Representante, type Tecnico } from '../db/db';
+import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica, type ComplaintVerification, type Custody, type Representante, type Tecnico } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
 import { confirmDialog, toast } from '../lib/notifications';
@@ -26,6 +26,7 @@ import {
 import { isDatabaseLockedError, isDatabaseUnlocked } from '../lib/unlock';
 import { addAppLog } from '../lib/appLogs';
 import UnlockDialog from '../components/UnlockDialog';
+import { ensureLoggedOfficer, loggedOfficerFromStorage } from '../lib/inspectionTeam';
 import {
   NovaVisitaProvider,
   type ItemApreensaoForm,
@@ -35,6 +36,7 @@ import {
 } from './nova-visita/context';
 import StepOperador from './nova-visita/steps/StepOperador';
 import StepEquipa from './nova-visita/steps/StepEquipa';
+import StepDenuncia from './nova-visita/steps/StepDenuncia';
 import StepInfracoes from './nova-visita/steps/StepInfracoes';
 import StepApreensao from './nova-visita/steps/StepApreensao';
 import StepProvas from './nova-visita/steps/StepProvas';
@@ -80,6 +82,8 @@ import {
   canUseIterativeMode,
   type ModalidadeFiscalizacao,
 } from '../lib/inspectionModality';
+import {inspectionStepOrder} from '../lib/inspectionSteps';
+import {complaintVerificationGaps, selectComplaintForInspection} from '../lib/complaintInspection';
 
 type FirmaDistanceMeta = {
   distanceKm: number | null;
@@ -110,12 +114,6 @@ export const RAMOS = getCachedRamos();
  * de a modalidade chegar ao estado: lê-la do render corrente resolvia sempre
  * pela modalidade errada e o agente voltava ao primeiro passo em silêncio.
  */
-function stepOrderFor(modalidade: ModalidadeFiscalizacao | null): readonly string[] {
-  return modalidade === 'iterativa'
-    ? ['operador', 'equipa', 'tela', 'revisao']
-    : ['operador', 'equipa', 'infracoes', 'apreensao', 'provas', 'cestaBasica', 'recomendacoes', 'revisao'];
-}
-
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
@@ -154,7 +152,7 @@ export function formatDistanceLabel(distanceKm: number | null): string | null {
 
 export default function NovaVisita() {
   const navigate = useNavigate();
-  const locationState = useLocation().state as { firmaId?: string } | null;
+  const locationState = useLocation().state as { firmaId?: string; complaintUid?:string } | null;
   const firmas = useLiveQuery(() => db.firmas.toArray());
 
   const [equipeNaoDefinida] = useState(() => localStorage.getItem('drcae_equipe_definida') !== 'true');
@@ -178,6 +176,20 @@ export default function NovaVisita() {
   const sessaoAbertaEm = useRef(Date.now());
   const [coberturaReconhecida, setCoberturaReconhecida] = useState<string[]>([]);
   const [firmaId, setFirmaId] = useState(locationState?.firmaId || '');
+  const [complaintUid, setComplaintUid] = useState(locationState?.complaintUid || '');
+  const [complaintVerification, setComplaintVerification] = useState<ComplaintVerification|null>(null);
+  const complaint = useLiveQuery(
+    () => complaintUid ? db.denuncias.get(complaintUid) : undefined,
+    [complaintUid],
+  );
+  const suggestedComplaint = useLiveQuery(async () => {
+    if (!firmaId) return null;
+    return selectComplaintForInspection(await db.denuncias.toArray(), firmaId);
+  }, [firmaId]);
+  useEffect(() => {
+    if (locationState?.complaintUid || suggestedComplaint === undefined) return;
+    setComplaintUid(suggestedComplaint?.uid ?? '');
+  }, [locationState?.complaintUid, suggestedComplaint]);
   const [representante, setRepresentante] = useState<Representante>({ ...EMPTY_REPRESENTANTE });
   const [atividadeEconomica, setAtividadeEconomica] = useState('');
   const [visibleFirmsCount, setVisibleFirmsCount] = useState(15);
@@ -189,18 +201,26 @@ export default function NovaVisita() {
   const [isSavingAtividade, setIsSavingAtividade] = useState(false);
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [time, setTime] = useState(format(new Date(), 'HH:mm'));
-  const [technicians, setTechnicians] = useState<Tecnico[]>(() => {
+  const loggedOfficer = useMemo(() => loggedOfficerFromStorage(), []);
+  const [technicians, setTechniciansState] = useState<Tecnico[]>(() => {
     const saved = localStorage.getItem('drcae_equipe');
     if (saved) {
       try {
         // Tolera a equipa gravada como array de nomes (antes da SPEC-07).
-        return normalizeTecnicos(JSON.parse(saved));
+        return ensureLoggedOfficer(normalizeTecnicos(JSON.parse(saved)), loggedOfficer);
       } catch {
-        return [];
+        return ensureLoggedOfficer([], loggedOfficer);
       }
     }
-    return [];
+    return ensureLoggedOfficer([], loggedOfficer);
   });
+  const setTechnicians: React.Dispatch<React.SetStateAction<Tecnico[]>> = useCallback(
+    (update) => setTechniciansState((current) => ensureLoggedOfficer(
+      typeof update === 'function' ? update(current) : update,
+      loggedOfficer,
+    )),
+    [loggedOfficer],
+  );
   const { location, refresh: refreshGeo } = useGeoLocation();
   const [mapProvider, setMapProvider] = useState<MapProvider>('osm');
 
@@ -252,6 +272,12 @@ export default function NovaVisita() {
   const [notes, setNotes] = useState('');
   const [anexos, setAnexos] = useState<PendingAnexo[]>([]);
   const [selectedPreview, setSelectedPreview] = useState<EvidenciaSeleccionada | null>(null);
+  const complaintFindingCount = useLiveQuery(async () => {
+    if (!complaintUid) return 0;
+    if (modalidade !== 'iterativa') return complaintVerification ? 1 : 0;
+    if (!visitaId) return 0;
+    return db.constatacoes.where('visitaId').equals(visitaId).count();
+  }, [complaintUid, modalidade, visitaId, complaintVerification]) ?? 0;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -529,7 +555,7 @@ export default function NovaVisita() {
   // percorrer os domínios por ordem fixa. Os passos que sobrevivem são os que
   // são genuinamente sequenciais — não se regista nada sem saber de quem é o
   // espaço, e não se fecha sem rever.
-  const STEP_ORDER = stepOrderFor(modalidade);
+  const STEP_ORDER = inspectionStepOrder(modalidade, !!complaintUid);
   const TOTAL_STEPS = STEP_ORDER.length;
   const stepKey = STEP_ORDER[step - 1] ?? STEP_ORDER[0];
   const handleNext = () => setStep(s => Math.min(TOTAL_STEPS, s + 1));
@@ -562,10 +588,16 @@ export default function NovaVisita() {
     itens: apreensaoItens,
     trustee,
   });
+  const complaintGaps = complaintVerificationGaps({
+    verification: complaintVerification,
+    findingCount: complaintFindingCount,
+    evidenceCount: anexos.length,
+  });
 
   const canAdvanceStep = !(
     (stepKey === 'operador' && (!firmaId || !atividadeEconomica || !isRepresentanteComplete(representante))) ||
     (stepKey === 'equipa' && !hasCatalogTecnico(technicians)) ||
+    (stepKey === 'denuncia' && complaintGaps.length > 0) ||
     // Os motivos vivem em `lib/apreensaoValidacao.ts`, porque o ecrã também
     // precisa deles para os mostrar: bloquear sem dizer o que falta é
     // indistinguível de uma avaria para quem está no terreno.
@@ -617,6 +649,8 @@ export default function NovaVisita() {
       geolocation: location,
       draftState: 'draft',
       modalidade: 'iterativa',
+      complaintUid: complaintUid || null,
+      complaintVerification,
       synced: false,
       createdAt: Date.now(),
     });
@@ -706,6 +740,7 @@ export default function NovaVisita() {
     date, time, technicians, infracoes, recomendacoes, recomendacoesHistoricas,
     notes, apreensaoActiva, apreensaoSemInfracao, apreensaoJustificacao,
     apreensaoItens, trustee, produtosPrices, coberturaReconhecida,
+    complaintUid, complaintVerification,
   };
 
   const { draftChecked, saveDraft, clearDraft } = useVisitaDraft({
@@ -717,8 +752,11 @@ export default function NovaVisita() {
       // e um rascunho da tela iterativa restaurado contra a ordem do stepper
       // caía sempre no primeiro passo.
       const modalidadeLida = modalidadeDoRascunho(draft, canUseIterativeMode());
+      const complaintUidLido = typeof draft.complaintUid === 'string' ? draft.complaintUid : '';
       setModalidade(modalidadeLida);
-      setStep(passoDoRascunho(draft, stepOrderFor(modalidadeLida)));
+      setComplaintUid(complaintUidLido);
+      setComplaintVerification(draft.complaintVerification??null);
+      setStep(passoDoRascunho(draft, inspectionStepOrder(modalidadeLida, !!complaintUidLido)));
 
       if (typeof draft.visitaId === 'string') setVisitaId(draft.visitaId);
       if (draft.firmaId) setFirmaId(draft.firmaId);
@@ -951,6 +989,8 @@ export default function NovaVisita() {
       // torna visível nas listagens e elegível para o push.
       draftState: 'submitted',
       modalidade,
+      complaintUid: complaintUid || null,
+      complaintVerification,
       sessao: {
         abertaEm: new Date(sessaoAbertaEm.current).toISOString(),
         concluidaEm: new Date().toISOString(),
@@ -1270,6 +1310,16 @@ export default function NovaVisita() {
         {/* STEP 1 */}
         {stepKey === 'operador'     && <StepOperador />}
         {stepKey === 'equipa'       && <StepEquipa />}
+        {stepKey === 'denuncia' && (
+          <StepDenuncia
+            complaint={complaint}
+            verification={complaintVerification}
+            onChange={setComplaintVerification}
+            evidenceCount={anexos.length}
+            findingCount={complaintFindingCount}
+            gaps={complaintGaps}
+          />
+        )}
         {stepKey === 'tela'         && (
           <TelaIterativa
             folha={folhaIterativa}
@@ -1288,7 +1338,7 @@ export default function NovaVisita() {
         {stepKey === 'provas'       && <StepProvas />}
         {stepKey === 'cestaBasica'  && <StepCestaBasica />}
         {stepKey === 'recomendacoes'&& <StepRecomendacoes />}
-        {stepKey === 'revisao'      && <StepRevisao />}
+        {stepKey === 'revisao'      && <StepRevisao complaint={complaint} verification={complaintVerification} />}
       </div>
 
       {/* Floating Bottom Bar Navigation */}

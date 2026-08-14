@@ -63,6 +63,11 @@ const V11_STORES = {
   avatarFiles: 'ownerUid, avatarUid, version, updatedAt',
 };
 
+const V12_STORES = {
+  ...V11_STORES,
+  denuncias: 'uid',
+};
+
 const DB_NAME = 'drcae_migration_test';
 
 beforeEach(async () => {
@@ -221,5 +226,24 @@ describe('subida v10 → v11 com dados existentes', () => {
     });
     expect((await v11.table('avatarFiles').get('a1'))?.version).toBe('v1');
     v11.close();
+  });
+});
+
+describe('subida v11 → v12 com dados existentes', () => {
+  it('adiciona denúncias sem tocar nas fiscalizações por sincronizar', async () => {
+    const v11 = new Dexie(DB_NAME);
+    v11.version(11).stores(V11_STORES);
+    await v11.open();
+    await v11.table('visitas').add({ id: 'v1', firmaId: 'f1', synced: false });
+    v11.close();
+
+    const v12 = new Dexie(DB_NAME);
+    v12.version(11).stores(V11_STORES);
+    v12.version(12).stores(V12_STORES);
+    await expect(v12.open()).resolves.toBeDefined();
+
+    expect(await v12.table('visitas').count()).toBe(1);
+    expect(await v12.table('denuncias').count()).toBe(0);
+    v12.close();
   });
 });

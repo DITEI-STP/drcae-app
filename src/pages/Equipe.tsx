@@ -11,6 +11,11 @@ import Avatar from '../components/Avatar';
 import { normalizeTecnicos } from '../lib/inspectionModel';
 import { triggerFullSyncIfReachable } from '../lib/sync';
 import ChipGroup from '../components/ChipGroup';
+import {
+  ensureLoggedOfficer,
+  loggedOfficerFromStorage,
+  selectableOfficers,
+} from '../lib/inspectionTeam';
 
 // Helper determinístico para iniciais e gradientes dos membros da equipa
 const getMemberAvatar = (name: string) => {
@@ -64,6 +69,7 @@ export default function Equipe() {
   const [equipeDefinida, setEquipeDefinida] = useState(() => {
     return localStorage.getItem('drcae_equipe_definida') === 'true';
   });
+  const loggedOfficer = useMemo(() => loggedOfficerFromStorage(), []);
 
   // O catálogo de agentes vive em Dexie (SPEC-07): é dado de referência
   // sincronizado, e o `localStorage` não participa do diagnóstico de sync nem
@@ -89,15 +95,17 @@ export default function Equipe() {
       } catch {
         initial = [];
       }
-      setMembers(initial);
     }
+    initial = ensureLoggedOfficer(initial, loggedOfficer);
+    setMembers(initial);
+    localStorage.setItem('drcae_equipe', JSON.stringify(initial));
     entrySnapshot.current = initial;
-  }, []);
+  }, [loggedOfficer]);
 
   // Com dezenas de agentes, uma lista plana é inutilizável no terreno.
   const districts = useMemo(
-    () => [...new Set(agentes.map((a) => a.district).filter(Boolean))].sort() as string[],
-    [agentes],
+    () => [...new Set(selectableOfficers(agentes, loggedOfficer).map((a) => a.district).filter(Boolean))].sort() as string[],
+    [agentes, loggedOfficer],
   );
   const districtOptions = useMemo(
     () => [{ value: 'all', label: 'Todos' }, ...districts.map((d) => ({ value: d, label: d }))],
@@ -108,8 +116,13 @@ export default function Equipe() {
     uid ? agentes.find((a) => a.uid === uid) : undefined;
 
   const visibleAgentes = useMemo(
-    () => (districtFilter === 'all' ? agentes : agentes.filter((a) => a.district === districtFilter)),
-    [agentes, districtFilter],
+    () => {
+      const selectable = selectableOfficers(agentes, loggedOfficer);
+      return districtFilter === 'all'
+        ? selectable
+        : selectable.filter((a) => a.district === districtFilter);
+    },
+    [agentes, districtFilter, loggedOfficer],
   );
 
   const handleSyncAgentes = async () => {
@@ -134,8 +147,9 @@ export default function Equipe() {
   };
 
   const saveTeam = (updatedMembers: Tecnico[], message = 'Equipa atualizada com sucesso!') => {
-    setMembers(updatedMembers);
-    localStorage.setItem('drcae_equipe', JSON.stringify(updatedMembers));
+    const requiredMembers = ensureLoggedOfficer(updatedMembers, loggedOfficer);
+    setMembers(requiredMembers);
+    localStorage.setItem('drcae_equipe', JSON.stringify(requiredMembers));
     // A composição escalada é o que desbloqueia o registo. O botão «Confirmar
     // & Gravar» que existia aqui só repunha esta mesma flag, pelo que era
     // decorativo — e desbloqueava com zero agentes, por não olhar à lista.
@@ -144,7 +158,7 @@ export default function Equipe() {
     showToast(message);
 
     if (navigator.onLine && api.getJwtToken()) {
-      const teamStr = updatedMembers.map((m) => m.name).join(', ');
+      const teamStr = requiredMembers.map((m) => m.name).join(', ');
       api.updateDeviceTeam(teamStr).catch((err) => {
         console.error('Erro ao atualizar equipa no servidor:', err);
       });
@@ -162,6 +176,7 @@ export default function Equipe() {
   };
 
   const handleToggleOfficer = (officer: Agente) => {
+    if (officer.uid === loggedOfficer?.uid) return;
     if (members.some((m) => m.uid === officer.uid)) {
       saveTeam(members.filter((m) => m.uid !== officer.uid));
     } else {
@@ -170,6 +185,7 @@ export default function Equipe() {
   };
 
   const handleRemoveMember = (uid: string) => {
+    if (uid === loggedOfficer?.uid) return;
     if (members.length <= 1) {
       showToast('A equipa deve ter pelo menos um agente.', true);
       return;
@@ -371,14 +387,20 @@ export default function Equipe() {
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveMember(member.uid)}
-                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all cursor-pointer"
-                  title="Sair da Equipa"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {member.uid === loggedOfficer?.uid ? (
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 text-right">
+                    Autenticado<br />obrigatório
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMember(member.uid)}
+                    className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-all cursor-pointer"
+                    title="Sair da Equipa"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             );
           })}

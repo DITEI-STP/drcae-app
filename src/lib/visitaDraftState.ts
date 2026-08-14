@@ -2,6 +2,7 @@ import type {
   RecomendacaoHistorica,
   Representante,
   Tecnico,
+  ComplaintVerification,
 } from '../db/db';
 import type {
   InfracaoSelecionada,
@@ -33,9 +34,9 @@ export const DRAFT_STATE_KEY = 'drcae_nova_visita_draft';
  *
  * 1 → sem `stepKey`; 2 → com `stepKey`; 3 → com o estado de apreensão, preços,
  * cobertura e respostas às recomendações anteriores, e com as provas fora do
- * `localStorage`.
+ * `localStorage`. 4 acrescenta a ligação e a conclusão de averiguação da denúncia.
  */
-export const DRAFT_VERSION = 3;
+export const DRAFT_VERSION = 4;
 
 export interface DraftPayload {
   modalidade: ModalidadeFiscalizacao | null;
@@ -58,6 +59,8 @@ export interface DraftPayload {
   trustee: TrusteeForm;
   produtosPrices: PrecoPorProduto;
   coberturaReconhecida: string[];
+  complaintUid?: string;
+  complaintVerification?: ComplaintVerification | null;
 }
 
 export interface DraftState extends Partial<DraftPayload> {

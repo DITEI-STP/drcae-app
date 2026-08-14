@@ -62,7 +62,7 @@ export default function SetupPage() {
             </div>
             <p className="text-sm leading-6 text-slate-400">
               Instale a versão mais recente do APK DRCAE. O APK aceita certificados
-              inválidos apenas para hosts <code className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-200">*.local</code>,
+              inválidos apenas para hosts <code className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-200">*.local.com</code>,
               mas o navegador externo continua a exigir a CA instalada no sistema.
             </p>
           </div>

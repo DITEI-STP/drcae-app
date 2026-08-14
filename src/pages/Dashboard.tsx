@@ -30,6 +30,7 @@ import { WEBVIEW_APK_DOWNLOAD_URL } from '../lib/webviewApk';
 import { useDeviceIdentity } from '../lib/deviceIdentity';
 import { useMotionState, describeMotion } from '../lib/motionState';
 import NearbyOperatorsRadar from '../components/NearbyOperatorsRadar';
+import ReleasedComplaintsAlert from '../components/ReleasedComplaintsAlert';
 import { useOperadores } from '../lib/operadoresCache';
 import { normalizeTecnicos } from '../lib/inspectionModel';
 import { isRascunho } from '../lib/visitaDraft';
@@ -389,6 +390,8 @@ export default function Dashboard() {
           </div>
         </Link>
       </div>
+
+      <ReleasedComplaintsAlert />
 
       {/* Radar dos operadores mapeados em redor — depois do resumo, que é a
           leitura de contexto que o agente faz primeiro. */}

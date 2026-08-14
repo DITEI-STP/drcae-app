@@ -21,7 +21,7 @@ import { useBackIntent } from '../hooks/useBackIntent';
 const STATUS_LABEL: Record<Apreensao['settlementStatus'], { label: string; className: string }> = {
   'not-applicable': { label: 'Sem depósito', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
   pending: { label: 'Por recolher', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
-  partial: { label: 'Recolha parcial', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
+  partial: { label: 'Recolha parcial', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
   settled: { label: 'Liquidado', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
   released: { label: 'Devolvido', className: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300' },
   breached: { label: 'Quebra de depósito', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
@@ -60,7 +60,7 @@ export default function Apreensoes() {
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-[#F8FAFC] dark:bg-slate-950 pb-24">
       <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800/80">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-xl">
             <PackageOpen className="w-6 h-6" />
           </div>
           <div>
@@ -72,8 +72,16 @@ export default function Apreensoes() {
         </div>
       </div>
 
-      <Seccao titulo="Pendentes de recolha" vazio="Nada por recolher — todos os autos estão liquidados." itens={pendentes} onSelect={setSelected} />
-      <Seccao titulo="Histórico" vazio="Ainda não há autos de apreensão neste dispositivo." itens={restantes} onSelect={setSelected} />
+      {apreensoes.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-10 text-center dark:border-slate-700 dark:bg-slate-900/50">
+          <PackageOpen className="mx-auto h-9 w-9 text-blue-300 dark:text-blue-700" />
+          <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">Ainda não há autos de apreensão neste dispositivo</p>
+          <p className="mt-1 text-xs text-slate-400">Os autos lavrados ou sincronizados passam a aparecer aqui.</p>
+        </div>
+      ) : <>
+        {pendentes.length > 0 && <Seccao titulo="Pendentes de recolha" vazio="" itens={pendentes} onSelect={setSelected} />}
+        {restantes.length > 0 && <Seccao titulo="Histórico" vazio="" itens={restantes} onSelect={setSelected} />}
+      </>}
     </div>
   );
 }
@@ -267,7 +275,7 @@ function DetalheApreensao({ apreensao, onBack }: { apreensao: Apreensao; onBack:
         <button
           type="button"
           onClick={() => setRegistando(true)}
-          className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm uppercase tracking-wide transition-colors shadow-lg"
+          className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm uppercase tracking-wide transition-colors shadow-lg shadow-blue-500/20"
         >
           Registar recolha
         </button>
@@ -400,7 +408,7 @@ function RegistarRecolha({ apreensao, itens, onDone, onCancel }: {
               type="number" inputMode="decimal" min="0" step="0.01"
               value={quantidades[it.id!] ?? ''}
               onChange={(e) => setQuantidades((p) => ({ ...p, [it.id!]: e.target.value }))}
-              className="w-full p-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 dark:text-slate-100 font-mono"
+              className="w-full p-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-100 font-mono"
             />
             {div && (
               <>
@@ -429,7 +437,7 @@ function RegistarRecolha({ apreensao, itens, onDone, onCancel }: {
           'w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wide transition-colors shadow-lg flex items-center justify-center gap-2',
           isSubmitting || faltaMotivo || faltaEntregador
             ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
-            : 'bg-amber-600 hover:bg-amber-700 text-white',
+            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20',
         )}
       >
         {isSubmitting ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}

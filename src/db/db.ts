@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { encryptRecord, decryptRecord, getActiveKey, type AppCryptoKey } from '../lib/crypto';
+import { rekeyEncryptedTables, type RekeyTarget } from './rekey';
 
 export interface AtividadeEconomica {
   id?: string;
@@ -307,6 +308,46 @@ export interface Visita {
   sessao?: SessaoFiscalizacao;
   /** Contagens por domínio e domínios reconhecidos como vazios. */
   cobertura?: CoberturaFiscalizacao;
+  /** Denúncia que originou a fiscalização, quando a visita veio da triagem. */
+  complaintUid?: string | null;
+  complaintVerification?: ComplaintVerification | null;
+}
+
+export type ComplaintFieldOutcome =
+  | 'confirmed'
+  | 'not-confirmed'
+  | 'inconclusive';
+
+export interface ComplaintVerification {
+  outcome: ComplaintFieldOutcome;
+  note: string;
+}
+
+export interface DenunciaCampo {
+  uid: string;
+  code: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  category: string;
+  categoryIcon?: { kind: 'lucide' | 'svg' | 'image'; value: string } | null;
+  description: string;
+  occurredAt?: string | null;
+  createdAt: string;
+  releasedAt: string;
+  targetName?: string | null;
+  targetReference?: string | null;
+  targetGeo?: { lat: number; lng: number } | null;
+  operatorId?: string | null;
+  operatorName?: string | null;
+  operatorGeo?: { lat: number; lng: number } | null;
+  district?: string | null;
+  fieldOutcome?: ComplaintFieldOutcome | null;
+  fieldNote?: string | null;
+  attachments: Array<{
+    uid: string;
+    name: string;
+    mimetype: string;
+    url: string;
+  }>;
 }
 
 export type ModalidadeFiscalizacao = 'stepper' | 'iterativa';
@@ -726,6 +767,7 @@ export class DrcaeDB extends Dexie {
   agentes!: Table<Agente, string>;
   utilizadores!: Table<UtilizadorInterno, string>;
   avatarFiles!: Table<AvatarFile, string>;
+  denuncias!: Table<DenunciaCampo, string>;
   representantes!: Table<RepresentanteFirma, string>;
   apreensoes!: Table<Apreensao, string>;
   apreensaoItens!: Table<ApreensaoItem, string>;
@@ -734,8 +776,8 @@ export class DrcaeDB extends Dexie {
   syncQueue!: Table<SyncOperation, number>;
   metadata!: Table<MetadataRecord, string>;
 
-  constructor() {
-    super('drcae_db');
+  constructor(name = 'drcae_db') {
+    super(name);
 
     // Versão 1 (Legado)
     this.version(1).stores({
@@ -903,6 +945,30 @@ export class DrcaeDB extends Dexie {
       metadata: 'key'
     });
 
+    // Versão 12 — denúncias libertadas para averiguação no terreno.
+    // Store aditiva e cifrada: uma denúncia identifica factos alegados contra
+    // um operador, pelo que não pode ficar legível no IndexedDB do tablet.
+    this.version(12).stores({
+      firmas: 'id, synced',
+      visitas: 'id, firmaId, synced, offlineCode, officialCode, draftState',
+      constatacoes: 'id, visitaId, synced',
+      infracoes: 'id, visitaId, synced, constatacaoId',
+      anexos: 'id, visitaId, synced, constatacaoId',
+      attachments: 'id, visitaId, synced',
+      draftAttachments: 'localId, ordem',
+      agentes: 'uid, district',
+      utilizadores: 'uid, role, isOfficer',
+      avatarFiles: 'ownerUid, avatarUid, version, updatedAt',
+      denuncias: 'uid',
+      representantes: 'id, firmaId, synced',
+      apreensoes: 'id, visitaId, firmaId, synced, settlementStatus, constatacaoId',
+      apreensaoItens: 'id, apreensaoId, synced, custody',
+      recolhas: 'id, apreensaoId, synced',
+      recolhaItens: 'id, recolhaId, apreensaoItemId, synced',
+      syncQueue: '++id, entity, action, timestamp',
+      metadata: 'key'
+    });
+
     // Envolver tabelas para criptografia transparente
     const firmaFields = [
       'logo', 'nif', 'name', 'district', 'address', 'contact', 'email', 'type',
@@ -922,7 +988,8 @@ export class DrcaeDB extends Dexie {
       'atividadeEconomica', 'geolocation', 'recomendacoes', 'recomendacoesHistoricas', 'produtos', 'createdAt', 'locationAutoCaptured',
       // Medição da SPEC-10. `draftState` fica de fora de propósito: está
       // indexado, e um índice sobre campo cifrado não existe.
-      'modalidade', 'sessao', 'cobertura'
+      'modalidade', 'sessao', 'cobertura', 'complaintUid',
+      'complaintVerification'
     ];
 
     const infracaoFields = ['type', 'severity'];
@@ -949,6 +1016,12 @@ export class DrcaeDB extends Dexie {
     this.agentes = this.table('agentes') as Table<Agente, string>;
     this.utilizadores = this.table('utilizadores') as Table<UtilizadorInterno, string>;
     this.avatarFiles = this.table('avatarFiles') as Table<AvatarFile, string>;
+    this.denuncias = new EncryptedTable(this.table('denuncias'), [
+      'code', 'priority', 'category', 'categoryIcon', 'description',
+      'occurredAt', 'createdAt', 'releasedAt', 'targetName',
+      'targetReference', 'targetGeo', 'operatorId', 'operatorName',
+      'operatorGeo', 'district', 'fieldOutcome', 'fieldNote', 'attachments',
+    ]) as any;
     this.representantes = new EncryptedTable(
       this.table('representantes'),
       ['name', 'docType', 'docTypeName', 'docNumber', 'role', 'lastSeenAt'],
@@ -991,15 +1064,32 @@ export class DrcaeDB extends Dexie {
     }
   }
 
-  // Descarta todo o conteúdo cifrado local. Usado quando a palavra-passe do
-  // agente muda (recuperação de senha): a chave AES deriva da palavra-passe,
-  // pelo que os registos gravados com a anterior deixam de ser legíveis — e
-  // mantê-los apenas produziria registos corrompidos em silêncio.
+  async hasOfflineCanary(): Promise<boolean> {
+    return Boolean(await this.table('metadata').get('canary'));
+  }
+
+  async rekeyEncryptedData(oldKey: AppCryptoKey, newKey: AppCryptoKey): Promise<void> {
+    const targets: RekeyTarget[] = [
+      ['firmas', this.firmas], ['visitas', this.visitas],
+      ['constatacoes', this.constatacoes], ['infracoes', this.infracoes],
+      ['anexos', this.anexos], ['representantes', this.representantes],
+      ['denuncias', this.denuncias],
+      ['apreensoes', this.apreensoes], ['apreensaoItens', this.apreensaoItens],
+      ['recolhas', this.recolhas], ['recolhaItens', this.recolhaItens],
+      ['metadata', this.metadata],
+    ].map(([name, table]) => ({ name, table })) as RekeyTarget[];
+    await rekeyEncryptedTables(this, targets, oldKey, newKey);
+  }
+
+  // Descarta o conteúdo cifrado local apenas como recuperação de uma cache
+  // legada/irrecuperável. No cofre multiagente normal, trocar a palavra-passe
+  // substitui só o embrulho da chave para esse agente e preserva os dados.
   async resetEncryptedData(): Promise<void> {
     const tables = [
       'firmas', 'visitas', 'constatacoes', 'infracoes', 'anexos',
       'attachments', 'draftAttachments', 'agentes', 'utilizadores',
       'avatarFiles', 'representantes',
+      'denuncias',
       'apreensoes', 'apreensaoItens', 'recolhas', 'recolhaItens',
       'syncQueue', 'metadata',
     ].map((name) => this.table(name));

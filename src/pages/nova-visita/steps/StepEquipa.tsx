@@ -2,6 +2,7 @@ import React from 'react';
 import { useNovaVisitaForm } from '../context';
 import { MapPin, Users } from 'lucide-react';
 import { hasCatalogTecnico } from '../../../lib/inspectionModel';
+import { loggedOfficerFromStorage } from '../../../lib/inspectionTeam';
 
 /**
  * Data, hora e agentes de serviço. Os agentes vêm do catálogo cadastrado no
@@ -10,6 +11,7 @@ import { hasCatalogTecnico } from '../../../lib/inspectionModel';
  * O estado vive no componente-pai e chega por contexto — ver `../context.ts`.
  */
 export default function StepEquipa() {
+  const loggedOfficer = loggedOfficerFromStorage();
   const {
     anexos,
     location,
@@ -57,13 +59,19 @@ export default function StepEquipa() {
                        )}
                     </div>
                  </div>
-                 <button
-                    type="button"
-                    onClick={() => setTechnicians(prev => prev.filter(t => t.name !== tech.name))}
-                    className="p-1.5 text-[10px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-400 font-bold rounded-lg transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900/50"
-                 >
-                    Remover
-                 </button>
+                 {tech.uid === loggedOfficer?.uid ? (
+                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                     Agente autenticado · obrigatório
+                   </span>
+                 ) : (
+                   <button
+                      type="button"
+                      onClick={() => setTechnicians(prev => prev.filter(t => t.uid !== tech.uid))}
+                      className="p-1.5 text-[10px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-400 font-bold rounded-lg transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900/50"
+                   >
+                      Remover
+                   </button>
+                 )}
               </div>
            ))}
 

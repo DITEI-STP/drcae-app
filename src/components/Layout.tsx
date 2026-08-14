@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { DRCAE_APP_VERSION } from '../lib/version';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, UserRound, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid, PackageOpen } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Settings, WifiOff, RefreshCw, Map as MapIcon, Users, Sun, Moon, Laptop, LogOut, Maximize, Minimize, CheckCircle, RadioTower, LayoutGrid, PackageOpen, Megaphone } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -16,6 +16,7 @@ import { confirmDialog, toast } from '../lib/notifications';
 import { useChatUnread } from '../lib/useChatUnread';
 import { useAppGrants } from '../lib/grants';
 import { isRascunho } from '../lib/visitaDraft';
+import {canReadReleasedComplaints} from '../lib/complaintAccess';
 import Avatar from './Avatar';
 import {
   OFFICER_INFO_UPDATED_EVENT,
@@ -32,8 +33,8 @@ const allNavItems = [
   { to: '/', icon: Home, label: 'Início', pageKey: 'app:page:home' },
   { to: '/firmas', icon: Briefcase, label: 'Firmas', pageKey: 'app:page:operators' },
   { to: '/visitas', icon: ClipboardList, label: 'Visitas', pageKey: 'app:page:inspections' },
+  { to: '/denuncias', icon: Megaphone, label: 'Denúncias', pageKey: 'app:page:complaints' },
   { to: '/equipe', icon: Users, label: 'Equipe', pageKey: 'app:page:team' },
-  { to: '/utilizadores', icon: UserRound, label: 'Utilizadores', pageKey: 'app:page:users' },
   { to: '/apreensoes', icon: PackageOpen, label: 'Apreensões', pageKey: 'app:page:seizures' },
   { to: '/mapa', icon: MapIcon, label: 'Mapa', pageKey: 'app:page:map' },
   { to: '/central', icon: RadioTower, label: 'Central', pageKey: 'app:page:central' },
@@ -139,7 +140,11 @@ export default function Layout({ onLogout }: LayoutProps) {
 
   const grants = useAppGrants();
   const grantedNavItems = useMemo(
-    () => allNavItems.filter((item) => grants.includes(item.pageKey)),
+    () => allNavItems.filter((item) =>
+      item.to === '/denuncias'
+        ? canReadReleasedComplaints(grants)
+        : grants.includes(item.pageKey),
+    ),
     [grants],
   );
   // Sem destinos, cai no conjunto mínimo de recuperação em vez de desenhar uma
