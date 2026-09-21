@@ -27,6 +27,7 @@ import { Settings, RefreshCw, HardDrive, LogOut, ShieldCheck, DownloadCloud, Upl
 import * as api from './lib/api';
 import * as crypto from './lib/crypto';
 import { refreshReferenceAssets, triggerFullSync } from './lib/sync';
+import { clearSyncedServerCache, hasClearableSyncCache } from './lib/syncCache';
 import { checkServerReachable, isServerReachable } from './lib/serverReachability';
 import { useSyncState } from './lib/syncState';
 export { useSyncState };
@@ -213,10 +214,8 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
   const clearData = async () => {
     if (!stats) return;
-    const { syncedFirmas, syncedVisitas, syncedInfracoes, syncedAnexos } = stats;
-    const totalToClear = syncedFirmas + syncedVisitas + syncedInfracoes + syncedAnexos;
 
-    if (totalToClear === 0) {
+    if (!hasClearableSyncCache(stats)) {
       customAlert.info('Limpeza de Cache', 'Não existem dados sincronizados em cache para limpar. Todos os seus dados locais são novos/não submetidos e foram preservados com segurança.');
       return;
     }
@@ -228,23 +227,9 @@ function SettingsPage({ onLogout }: { onLogout: () => void }) {
   };
 
   const actuallyClearData = async () => {
-    if (!stats) return;
-    const { syncedFirmas, syncedVisitas, syncedInfracoes, syncedAnexos } = stats;
     try {
-      const syncedFirmList = await db.firmas.filter(f => f.synced === true).toArray();
-      await db.firmas.bulkDelete(syncedFirmList.map(f => f.id!));
-
-      const syncedVisList = await db.visitas.filter(v => v.synced === true).toArray();
-      await db.visitas.bulkDelete(syncedVisList.map(v => v.id!));
-
-      const syncedInfList = await db.infracoes.filter(i => i.synced === true).toArray();
-      await db.infracoes.bulkDelete(syncedInfList.map(i => i.id!));
-
-      const syncedAnxList = await db.anexos.filter(a => a.synced === true).toArray();
-      await db.anexos.bulkDelete(syncedAnxList.map(a => a.id!));
-      await db.attachments.bulkDelete(syncedAnxList.map(a => a.id!)).catch(() => {});
-
-      toast.success('A cache de dados sincronizados foi limpa com sucesso. Os dados offline não submetidos foram preservados!');
+      await clearSyncedServerCache();
+      toast.success('A cache sincronizada foi limpa e o cursor reiniciado. A próxima sincronização irá descarregar novamente os dados activos permitidos pelo perfil, preservando os dados offline não submetidos.');
     } catch (e) {
       console.error(e);
       toast.error('Ocorreu um erro ao limpar o cache.');
