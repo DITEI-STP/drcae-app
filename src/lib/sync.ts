@@ -18,6 +18,7 @@ import { toast } from './notifications';
 import { syncRepresentantes } from './representantesCache';
 import { tecnicoNames } from './inspectionModel';
 import {syncReleasedComplaints} from './syncReleasedComplaints';
+import { applyServerDeletions } from './syncDeletions';
 import {
   invalidateOfflineCredentials,
   listOfflineCredentialVersions,
@@ -251,11 +252,12 @@ export async function syncPull(profile?: string): Promise<number> {
     count += response.apreensoes.length;
   }
 
-  // Catálogo de agentes e representantes conhecidos. Nenhum dos dois apaga a
-  // lista local quando vem vazio — ver os módulos respectivos.
+  // Catálogos de agentes e representantes conhecidos. O servidor qualifica
+  // snapshots completos para que uma lista vazia também possa limpar cache
+  // obsoleta sem transformar uma falha parcial numa eliminação local.
   await syncAgentesCatalog(response.agentes, response.agentes_state);
   await syncUtilizadoresCatalog(response.utilizadores, response.utilizadores_state);
-  await syncRepresentantes(response.representantes);
+  await syncRepresentantes(response.representantes, response.representantes_state);
   count += await syncReleasedComplaints(db.denuncias, response);
   const avatarSync = await syncAvatarCache(
     response.avatar_manifest,
@@ -276,7 +278,20 @@ export async function syncPull(profile?: string): Promise<number> {
     );
   }
 
-  // Gravar novo timestamp de sync no metadata
+  // Aplicar tombstones por último. O servidor filtra os registos com soft
+  // delete das listas activas; sem esta lista explícita o dispositivo nunca
+  // descobriria que um registo que já tem localmente passou a status = -1.
+  // A limpeza também remove filhos locais de uma fiscalização/apreensão
+  // eliminada para não deixar contagens e detalhes órfãos no IndexedDB.
+  const deletedCount = await applyServerDeletions(db, response.deleted);
+  if (deletedCount > 0) {
+    count += deletedCount;
+    addAppLog('info', 'sync', `${deletedCount} eliminação(ões) do servidor aplicada(s) localmente`);
+  }
+
+  // Gravar novo timestamp de sync no metadata apenas depois dos tombstones.
+  // Se a limpeza falhar, o cursor não avança e a eliminação volta no pull
+  // seguinte, em vez de ficar perdida para sempre.
   await db.metadata.put({
     key: 'last_sync_at',
     value: response.since_server,

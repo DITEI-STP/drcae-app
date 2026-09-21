@@ -22,16 +22,17 @@ export async function readRepresentantesDaFirma(
 }
 
 /**
- * Substitui o cache de representantes pelo que veio do `pull`.
+ * Substitui o cache de representantes pelo snapshot completo do `pull`.
  *
- * Uma lista vazia não apaga nada, pela mesma razão dos grants e dos agentes:
- * é quase sempre uma falha de resolução, e os chips são a única defesa contra
- * o agente voltar a escrever o nome à mão.
+ * Uma lista vazia só é autoritativa quando o servidor envia
+ * `representantes_state = complete`. Sem esse qualificador mantemos a cache
+ * anterior, porque uma falha de resolução não pode apagar os chips offline.
  */
 export async function syncRepresentantes(
   representantes: RepresentanteFirma[] | undefined | null,
+  state?: unknown,
 ): Promise<void> {
-  if (!Array.isArray(representantes) || representantes.length === 0) return;
+  if (state !== 'complete' || !Array.isArray(representantes)) return;
   try {
     // A transacção recebe a tabela do Dexie e não `db.representantes`: este é o
     // envolvente de cifra, e o Dexie recusa-o como argumento de `transaction` —
