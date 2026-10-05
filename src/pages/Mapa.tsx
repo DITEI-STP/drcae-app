@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapPin, Navigation, ArrowLeft, Clock, Compass, Activity, LayoutList, LayoutGrid, WifiOff, Crosshair } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, matchesSearch } from '../lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { type GeoCoords, useGeoLocation } from '../lib/geo';
 import { buildRoutePlan, type RoutePlan, calculateDistanceKm, calculateBearing } from '../lib/routing';
@@ -147,13 +147,21 @@ export default function Mapa() {
       if (gpsFilter === 'mapped' && !hasSomeGps) return false;
       if (gpsFilter === 'unmapped' && hasSomeGps) return false;
 
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
       const f = item.firma;
-      return f.name.toLowerCase().includes(q) ||
-             (f.nif && f.nif.toLowerCase().includes(q)) ||
-             f.district.toLowerCase().includes(q) ||
-             (f.address && f.address.toLowerCase().includes(q));
+      return matchesSearch(searchQuery, [
+        f.name,
+        f.nif,
+        f.district,
+        f.address,
+        f.type,
+        f.representant,
+        f.numAlvara,
+        ...(f.atividades ?? []).flatMap((atividade) => [
+          atividade.ramo,
+          atividade.atividade,
+          atividade.local,
+        ]),
+      ]);
     });
 
     // Ordenação: 

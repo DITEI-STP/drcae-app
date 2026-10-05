@@ -6,6 +6,7 @@ import ComplaintIcon from '../components/ComplaintIcon';
 import { db } from '../db/db';
 import { isNewReleasedComplaint } from '../lib/useComplaintRadar';
 import ComplaintPriority from '../components/ComplaintPriority';
+import { matchesSearch } from '../lib/search';
 
 const PRIORITY = { urgent: 4, high: 3, normal: 2, low: 1 } as const;
 
@@ -13,10 +14,15 @@ export default function Denuncias() {
   const complaints = useLiveQuery(() => db.denuncias.toArray(), []) ?? [];
   const [search, setSearch] = useState('');
   const rows = useMemo(() => complaints
-    .filter((item) => {
-      const query = search.trim().toLowerCase();
-      return !query || `${item.code} ${item.category} ${item.targetName ?? ''}`.toLowerCase().includes(query);
-    })
+    .filter((item) => matchesSearch(search, [
+      item.code,
+      item.category,
+      item.targetName,
+      item.targetReference,
+      item.operatorName,
+      item.district,
+      item.description,
+    ]))
     .sort((a, b) => PRIORITY[b.priority] - PRIORITY[a.priority] || b.releasedAt.localeCompare(a.releasedAt)),
   [complaints, search]);
 

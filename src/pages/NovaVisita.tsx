@@ -78,6 +78,7 @@ import {
   passoDoRascunho,
   type DraftPayload,
 } from '../lib/visitaDraftState';
+import { matchesSearch } from '../lib/search';
 import {
   canUseIterativeMode,
   type ModalidadeFiscalizacao,
@@ -284,14 +285,22 @@ export default function NovaVisita() {
   const [search, setSearch] = useState('');
 
   const filteredFirmas = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
     return (firmas || [])
-      .filter((firma) =>
-        !normalizedSearch ||
-        (firma.name || '').toLowerCase().includes(normalizedSearch) ||
-        (firma.nif || '').includes(normalizedSearch),
-      )
+      .filter((firma) => matchesSearch(search, [
+        firma.name,
+        firma.nif,
+        firma.address,
+        firma.district,
+        firma.type,
+        firma.representant,
+        firma.numAlvara,
+        firma.numLicenca,
+        ...(firma.atividades ?? []).flatMap((atividade) => [
+          atividade.ramo,
+          atividade.atividade,
+          atividade.local,
+        ]),
+      ]))
       .map((firma) => {
         const point = location ? getFirmaReferencePoint(firma) : null;
         const distanceKm = point && location

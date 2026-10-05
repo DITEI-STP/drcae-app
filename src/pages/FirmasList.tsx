@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Search, MapPin, Building, Plus, LayoutList, LayoutGrid, RefreshCw, ShieldAlert, ShieldCheck, AlertCircle, HelpCircle, X, SlidersHorizontal, Activity, Navigation } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { cn } from '../lib/utils';
+import { cn, matchesSearch } from '../lib/utils';
 import { useAppGrants } from '../lib/grants';
 import { useGeoLocation } from '../lib/geo';
 import { calculateDistanceKm } from '../lib/routing';
@@ -200,10 +200,23 @@ export default function FirmasList() {
       let filtered = processedFirmas;
 
       if (search) {
-        const query = search.toLowerCase();
-        filtered = filtered.filter(f =>
-          (f.name || '').toLowerCase().includes(query) || (f.nif || '').includes(search)
-        );
+        filtered = filtered.filter((f) => matchesSearch(search, [
+          f.name,
+          f.nif,
+          f.address,
+          f.district,
+          f.type,
+          f.representant,
+          f.numAlvara,
+          f.numLicenca,
+          f.email,
+          f.contact,
+          ...(f.atividades ?? []).flatMap((atividade) => [
+            atividade.ramo,
+            atividade.atividade,
+            atividade.local,
+          ]),
+        ]));
       }
 
       if (activeTab !== 'all') {

@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Search, Plus, Calendar, ShieldAlert, ClipboardList, LayoutList, LayoutGrid, Check, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { cn } from '../lib/utils';
+import { cn, matchesSearch } from '../lib/utils';
 import { useAppGrants } from '../lib/grants';
 import { semRascunhos } from '../lib/visitaDraft';
 
@@ -51,13 +51,14 @@ export default function VisitasList() {
 
       let filtered = comFirma;
       if (search) {
-        const normalizedSearch = search.toLowerCase();
-        filtered = filtered.filter(v =>
-          v.firmaName.toLowerCase().includes(normalizedSearch) ||
-          v.id?.toLowerCase().includes(normalizedSearch) ||
-          v.offlineCode?.toLowerCase().includes(normalizedSearch) ||
-          v.officialCode?.toLowerCase().includes(normalizedSearch)
-        );
+        filtered = filtered.filter((v) => matchesSearch(search, [
+          v.firmaName,
+          v.id,
+          v.offlineCode,
+          v.officialCode,
+          v.date,
+          v.notes,
+        ]));
       }
 
       if (syncFilter === 'pending') {
