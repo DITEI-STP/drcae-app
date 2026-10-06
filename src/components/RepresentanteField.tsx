@@ -5,7 +5,7 @@ import type { Representante, RepresentanteFirma } from '../db/db';
 import { readRepresentantesDaFirma } from '../lib/representantesCache';
 import { isRepresentanteComplete } from '../lib/inspectionModel';
 import { readAssetGroup } from '../lib/assetGroup';
-import { abreviaturaDocumento, nomeDocumento } from '../lib/documentType';
+import { abreviaturaDocumento, nomeDocumento, tecladoNumeroDocumento } from '../lib/documentType';
 import { useBackIntent } from '../hooks/useBackIntent';
 
 /** Fallback usado enquanto o grupo `tdocument` não estiver sincronizado. */
@@ -94,6 +94,7 @@ export default function RepresentanteField({ firmaId, value, onChange }: Props) 
 
   const escolhido = conhecidos.find((c) => c.id === value.uid);
   const preenchido = isRepresentanteComplete(value);
+  const tecladoDocumento = tecladoNumeroDocumento(value.docType);
 
   // Sem conhecidos não há lista para onde voltar, pelo que o formulário é o
   // ecrã — e não um sub-modo que se possa cancelar.
@@ -111,7 +112,7 @@ export default function RepresentanteField({ firmaId, value, onChange }: Props) 
   };
 
   // Enquanto o formulário está aberto por cima da lista, o «voltar» do Android
-  // fecha-o em vez de recuar o passo do stepper — pilha LIFO do useBackIntent,
+  // fecha-o em vez de recuar o passo da fiscalização — pilha LIFO do useBackIntent,
   // o mesmo contrato de um modal.
   useBackIntent(voltarALista, aEditar && !semLista);
 
@@ -257,6 +258,11 @@ export default function RepresentanteField({ firmaId, value, onChange }: Props) 
 
             <input
               type="text"
+              inputMode={tecladoDocumento.inputMode}
+              pattern={tecladoDocumento.pattern}
+              autoCapitalize={tecladoDocumento.autoCapitalize}
+              autoCorrect="off"
+              spellCheck={false}
               value={value.docNumber}
               onChange={(e) => onChange({ ...value, uid: undefined, docNumber: e.target.value })}
               placeholder="Nº do documento"

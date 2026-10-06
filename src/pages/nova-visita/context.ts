@@ -13,7 +13,6 @@ import type { RecomendacaoEmitida } from '../../lib/recomendacoes';
 import type { SupplyProduct } from '../../lib/supplyCache';
 import type { MapProvider } from '../../components/map/MapLayerSwitcher';
 import type { EvidenciaSeleccionada } from '../../components/EvidenciaPreview';
-import type { ModalidadeFiscalizacao } from '../../lib/inspectionModality';
 
 /**
  * Prova capturada mas ainda não persistida na fiscalização.
@@ -219,7 +218,6 @@ export interface NovaVisitaFormContext {
 
   // Apreensão
   apreensaoActiva: boolean;
-  setApreensaoActiva: (value: boolean) => void;
   apreensaoSemInfracao: boolean;
   setApreensaoSemInfracao: (value: boolean) => void;
   apreensaoJustificacao: string;
@@ -231,20 +229,17 @@ export interface NovaVisitaFormContext {
   /** O que falta para o auto poder avançar — ver `lib/apreensaoValidacao.ts`. */
   motivosApreensao: MotivoApreensao[];
 
-  // Modalidade de trabalho (SPEC-10)
-  modalidade: ModalidadeFiscalizacao;
   /**
    * Id da fiscalização em curso. Na modalidade iterativa existe desde o fim do
    * passo da equipa, porque é a ele que se penduram as constatações escritas no
-   * Dexie à medida; no formulário por passos é `null` até à submissão.
+   * Dexie à medida.
    */
   visitaId: string | null;
   /**
    * Constatação em aberto, à qual pertence tudo o que o agente registar a
    * seguir. É a posição do botão que ele tocou que a determina — nunca lhe é
    * pedido que decida a que constatação pertence o que acabou de fazer.
-   *
-   * `null` no formulário por passos, onde não há agrupamento.
+
    */
   constatacaoActivaId: string | null;
   setConstatacaoActivaId: (id: string | null) => void;

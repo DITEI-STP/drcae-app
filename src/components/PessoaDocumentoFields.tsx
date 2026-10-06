@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { IdCard } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { readAssetGroup } from '../lib/assetGroup';
-import { abreviaturaDocumento, nomeDocumento } from '../lib/documentType';
+import { abreviaturaDocumento, nomeDocumento, tecladoNumeroDocumento } from '../lib/documentType';
 
 /** Fallback usado enquanto o grupo `tdocument` não estiver sincronizado. */
 const FALLBACK_DOC_TYPES = [
@@ -59,6 +59,7 @@ export default function PessoaDocumentoFields({
   namePlaceholder,
 }: Props) {
   const docTypes = useMemo(() => readDocTypes(), []);
+  const tecladoDocumento = tecladoNumeroDocumento(value.docType);
 
   return (
     <div className="space-y-2">
@@ -105,6 +106,11 @@ export default function PessoaDocumentoFields({
 
         <input
           type="text"
+          inputMode={tecladoDocumento.inputMode}
+          pattern={tecladoDocumento.pattern}
+          autoCapitalize={tecladoDocumento.autoCapitalize}
+          autoCorrect="off"
+          spellCheck={false}
           value={value.docNumber}
           onChange={(e) => onChange({ ...value, docNumber: e.target.value })}
           placeholder="Nº do documento"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abreviaturaDocumento, nomeDocumento } from './documentType';
+import { abreviaturaDocumento, nomeDocumento, tecladoNumeroDocumento } from './documentType';
 
 describe('abreviaturaDocumento', () => {
   it('prefere a abreviatura declarada pela DRCAE', () => {
@@ -45,5 +45,22 @@ describe('nomeDocumento', () => {
 
   it('cai na abreviatura sem nome', () => {
     expect(nomeDocumento({ code: 'bi', name: '' })).toBe('BI');
+  });
+});
+
+describe('tecladoNumeroDocumento', () => {
+  it.each(['bi', 'BI', 'nif'])('usa teclado numérico para %s', (docType) => {
+    expect(tecladoNumeroDocumento(docType)).toEqual({
+      inputMode: 'numeric',
+      pattern: '[0-9]*',
+      autoCapitalize: 'off',
+    });
+  });
+
+  it.each(['passport', 'residence', 'outro'])('usa teclado alfanumérico para %s', (docType) => {
+    expect(tecladoNumeroDocumento(docType)).toEqual({
+      inputMode: 'text',
+      autoCapitalize: 'characters',
+    });
   });
 });

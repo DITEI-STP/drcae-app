@@ -9,10 +9,9 @@ interface Props {
   /**
    * Diz que o depositário vale para a fiscalização inteira.
    *
-   * Só a modalidade iterativa precisa: lá a folha abre por constatação, e o
-   * agente que apreende em duas constatações vê o mesmo bloco duas vezes a
-   * editar o mesmo dado. No formulário por passos há um passo só, e a nota não
-   * acrescentaria nada.
+   * A folha abre por constatação, e o agente que apreende em duas constatações
+   * vê o mesmo bloco duas vezes a editar o mesmo dado. A nota torna explícito
+   * que a escolha vale para a fiscalização inteira.
    */
   mostrarAmbito?: boolean;
 }
@@ -25,10 +24,9 @@ interface Props {
  * assina. Só o depositário terceiro obriga a escrever, porque não está
  * registado em lado nenhum — e é a ele que se exige a devolução.
  *
- * Extraído de `steps/StepApreensao.tsx` sem alteração de comportamento, para o
- * formulário fundido de Produtos não ficar com uma segunda cópia. É um
- * formulário com força probatória; duas cópias divergiriam à primeira correcção
- * feita só numa delas.
+ * Mantido como componente próprio para o formulário de Produtos não carregar
+ * uma segunda cópia de identificação do depositário. É um formulário com força
+ * probatória; duas cópias divergiriam à primeira correcção feita só numa delas.
  */
 export default function DepositarioDoAuto({ mostrarAmbito = false }: Props) {
   const {

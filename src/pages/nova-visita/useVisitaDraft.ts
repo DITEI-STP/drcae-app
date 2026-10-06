@@ -12,6 +12,7 @@ import {
 } from '../../lib/visitaDraftState';
 import type { PendingAnexo } from './context';
 import { STEP_LABELS } from './stepLabels';
+import { discardInspectionDraft } from './discardInspectionDraft';
 
 /**
  * Persistência do rascunho de fiscalização (SPEC-09 R9.5).
@@ -127,10 +128,9 @@ export function useVisitaDraft({
   );
 
   const clearDraft = useCallback(async () => {
-    localStorage.removeItem(DRAFT_STATE_KEY);
     await db.draftAttachments.clear().catch(() => {});
+    localStorage.removeItem(DRAFT_STATE_KEY);
   }, []);
-
   // Rascunho pendente: perguntar **antes** de restaurar.
   //
   // Antes restaurava sozinho e mostrava uma faixa discreta com «Descartar»,
@@ -159,6 +159,7 @@ export function useVisitaDraft({
       if (cancelled) return;
 
       if (!recuperar) {
+        await discardInspectionDraft(draft.visitaId ?? null);
         await clearDraft();
         setDraftChecked(true);
         return;
@@ -175,7 +176,6 @@ export function useVisitaDraft({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   // Autosave do estado de texto. O atraso curto grava o que se escreveu sem
   // gravar a cada tecla.
   //

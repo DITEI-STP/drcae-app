@@ -3,6 +3,7 @@ import type {
   Representante,
   Tecnico,
   ComplaintVerification,
+  ModalidadeFiscalizacao,
 } from '../db/db';
 import type {
   InfracaoSelecionada,
@@ -10,7 +11,6 @@ import type {
   PrecoPorProduto,
   TrusteeForm,
 } from '../pages/nova-visita/context';
-import type { ModalidadeFiscalizacao } from './inspectionModality';
 import type { RecomendacaoEmitida } from './recomendacoes';
 
 /**
@@ -102,35 +102,30 @@ export function parseDraft(raw: string | null): DraftState | null {
   return { ...draft, draftVersion: versao, savedAt: draft.savedAt ?? 0 } as DraftState;
 }
 
-/**
- * Modalidade com que o rascunho reabre.
- *
- * Resolvida antes do passo, e não a partir do render corrente: a ordem dos
- * passos depende dela, e um rascunho da tela iterativa lido contra a ordem do
- * stepper caía sempre no primeiro passo — que era o sintoma.
- *
- * @param podeIterativa se o agente continua no piloto. Um rascunho iterativo de
- *   quem perdeu o grant reabre no stepper, em vez de num ecrã que já não pode ver.
- */
-export function modalidadeDoRascunho(
-  draft: Pick<DraftState, 'modalidade'>,
-  podeIterativa: boolean,
-): ModalidadeFiscalizacao {
-  return draft.modalidade === 'iterativa' && podeIterativa ? 'iterativa' : 'stepper';
-}
+const LEGACY_TELA_STEPS = new Set([
+  'infracoes',
+  'apreensao',
+  'provas',
+  'cestaBasica',
+  'recomendacoes',
+]);
 
 /**
  * Número do passo em que o rascunho reabre, 1-indexado.
  *
- * O rascunho persiste `stepKey` e não o índice: um rascunho gravado antes de a
- * ordem dos passos ter mudado reabre no primeiro passo em vez de num passo
- * errado.
+ * O rascunho persiste `stepKey` e não o índice. Passos temáticos do antigo
+ * stepper são retomados na tela iterativa; qualquer outra chave que deixou de
+ * existir reabre no primeiro passo em vez de cair num passo errado.
  */
 export function passoDoRascunho(
   draft: Pick<DraftState, 'stepKey'>,
   ordem: readonly string[],
 ): number {
-  const indice = draft.stepKey ? ordem.indexOf(draft.stepKey) : -1;
+  const stepKey =
+    draft.stepKey && LEGACY_TELA_STEPS.has(draft.stepKey) && ordem.includes('tela')
+      ? 'tela'
+      : draft.stepKey;
+  const indice = stepKey ? ordem.indexOf(stepKey) : -1;
   return indice >= 0 ? indice + 1 : 1;
 }
 

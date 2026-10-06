@@ -5,7 +5,6 @@ import { cn } from '../../../lib/utils';
 import { catalogRecidivismBadge } from '../../../lib/recidivism';
 import { severityClasses } from '../../../lib/infractionCatalog';
 import InfractionDetailDrawer from '../../../components/InfractionDetailDrawer';
-import RecomendacoesAnteriores from './RecomendacoesAnteriores';
 
 /**
  * Catálogo de infracções e recomendações anteriores deste operador.
@@ -20,7 +19,6 @@ export default function StepInfracoes() {
     date,
     firmaId,
     handleOpenHistoricInspection,
-    modalidade,
     infracaoCountByType,
     infracoes,
     predefinedInfracoes,
@@ -35,14 +33,6 @@ export default function StepInfracoes() {
 
   return (
   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-     {/* Na modalidade iterativa as recomendações anteriores são tarefa própria
-         da tela, com progresso à vista — mostrá-las também aqui daria duas
-         listas da mesma coisa e duas formas de responder. No formulário por
-         passos continuam aqui: são o input que determina a infracção
-         (SPEC-01 R1.2). */}
-     {modalidade !== 'iterativa' && <RecomendacoesAnteriores />}
-
-
      <div className="bg-white p-4 rounded-xl border border-slate-200 dark:bg-slate-900 dark:border-slate-700 shadow-sm shrink-0">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 pl-1">Pesquisar Catálogo de Infrações</label>
         <div className="relative">

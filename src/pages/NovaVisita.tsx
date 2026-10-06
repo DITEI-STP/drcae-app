@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useGeoLocation } from '../lib/geo';
-import { AlertTriangle, ArrowLeft, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Trash2, Users } from 'lucide-react';
 import type { MapProvider } from '../components/map/MapLayerSwitcher';
 
 import { db, generateId, Visita, Infracao, Anexo, RecomendacaoHistorica, AtividadeEconomica, type ComplaintVerification, type Custody, type Representante, type Tecnico } from '../db/db';
@@ -37,11 +37,6 @@ import {
 import StepOperador from './nova-visita/steps/StepOperador';
 import StepEquipa from './nova-visita/steps/StepEquipa';
 import StepDenuncia from './nova-visita/steps/StepDenuncia';
-import StepInfracoes from './nova-visita/steps/StepInfracoes';
-import StepApreensao from './nova-visita/steps/StepApreensao';
-import StepProvas from './nova-visita/steps/StepProvas';
-import StepCestaBasica from './nova-visita/steps/StepCestaBasica';
-import StepRecomendacoes from './nova-visita/steps/StepRecomendacoes';
 import StepRevisao from './nova-visita/steps/StepRevisao';
 import {
   EMPTY_REPRESENTANTE,
@@ -69,22 +64,17 @@ import { obterPosterVideo } from '../lib/videoPoster';
 import { itemVazio, motivosApreensaoIncompleta } from '../lib/apreensaoValidacao';
 import { pendenciasDaTela } from '../lib/pendenciasDaTela';
 import { produtosVerificados } from '../lib/priceOwnership';
-import ModalidadeSelector from './nova-visita/ModalidadeSelector';
 import TelaIterativa, { type Folha } from './nova-visita/iterativa/TelaIterativa';
 import { purgarConstatacoesVazias } from './nova-visita/iterativa/useDraftSession';
 import { useVisitaDraft } from './nova-visita/useVisitaDraft';
 import {
-  modalidadeDoRascunho,
   passoDoRascunho,
   type DraftPayload,
 } from '../lib/visitaDraftState';
 import { matchesSearch } from '../lib/search';
-import {
-  canUseIterativeMode,
-  type ModalidadeFiscalizacao,
-} from '../lib/inspectionModality';
-import {inspectionStepOrder} from '../lib/inspectionSteps';
-import {complaintVerificationGaps, selectComplaintForInspection} from '../lib/complaintInspection';
+import { inspectionStepOrder } from '../lib/inspectionSteps';
+import { complaintVerificationGaps, selectComplaintForInspection } from '../lib/complaintInspection';
+import { discardInspectionDraft } from './nova-visita/discardInspectionDraft';
 
 type FirmaDistanceMeta = {
   distanceKm: number | null;
@@ -108,13 +98,6 @@ const getCachedRamos = (): string[] => {
 
 export const RAMOS = getCachedRamos();
 
-/**
- * Ordem dos passos por modalidade.
- *
- * Vive fora do componente porque o restauro do rascunho precisa dela **antes**
- * de a modalidade chegar ao estado: lê-la do render corrente resolvia sempre
- * pela modalidade errada e o agente voltava ao primeiro passo em silêncio.
- */
 function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
@@ -159,11 +142,7 @@ export default function NovaVisita() {
   const [equipeNaoDefinida] = useState(() => localStorage.getItem('drcae_equipe_definida') !== 'true');
 
   const [step, setStep] = useState(1);
-  // Modalidade de trabalho (SPEC-10). `null` = ainda por escolher; quem não tem
-  // o grant do piloto nunca vê o ecrã de escolha e entra directo no stepper.
-  const [modalidade, setModalidade] = useState<ModalidadeFiscalizacao | null>(
-    () => (canUseIterativeMode() ? null : 'stepper'),
-  );
+  const modalidade = 'iterativa' as const;
   const [visitaId, setVisitaId] = useState<string | null>(null);
   const [constatacaoActivaId, setConstatacaoActivaId] = useState<string | null>(null);
   // Folha aberta sobre a tela iterativa. Vive aqui, e não dentro dela, porque o
@@ -252,14 +231,6 @@ export default function NovaVisita() {
   /** Momento em que as referências de preço vieram do servidor. */
   const [supplyCachedAt, setSupplyCachedAt] = useState<number | null>(null);
   const [needsUnlock, setNeedsUnlock] = useState(false);
-  /**
-   * Declaração explícita de que houve apreensão — o interruptor do formulário
-   * por passos, onde é a única forma de a declarar.
-   *
-   * Na modalidade iterativa não existe: lá a apreensão declara-se apreendendo,
-   * e `apreensaoActiva` é derivado dos itens (ver a seguir).
-   */
-  const [apreensaoDeclarada, setApreensaoDeclarada] = useState(false);
   const [apreensaoSemInfracao, setApreensaoSemInfracao] = useState(false);
   const [apreensaoJustificacao, setApreensaoJustificacao] = useState('');
   const [apreensaoItens, setApreensaoItens] = useState<ItemApreensaoForm[]>([]);
@@ -274,11 +245,9 @@ export default function NovaVisita() {
   const [anexos, setAnexos] = useState<PendingAnexo[]>([]);
   const [selectedPreview, setSelectedPreview] = useState<EvidenciaSeleccionada | null>(null);
   const complaintFindingCount = useLiveQuery(async () => {
-    if (!complaintUid) return 0;
-    if (modalidade !== 'iterativa') return complaintVerification ? 1 : 0;
-    if (!visitaId) return 0;
+    if (!complaintUid || !visitaId) return 0;
     return db.constatacoes.where('visitaId').equals(visitaId).count();
-  }, [complaintUid, modalidade, visitaId, complaintVerification]) ?? 0;
+  }, [complaintUid, visitaId]) ?? 0;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -564,28 +533,14 @@ export default function NovaVisita() {
   // percorrer os domínios por ordem fixa. Os passos que sobrevivem são os que
   // são genuinamente sequenciais — não se regista nada sem saber de quem é o
   // espaço, e não se fecha sem rever.
-  const STEP_ORDER = inspectionStepOrder(modalidade, !!complaintUid);
+  const STEP_ORDER = inspectionStepOrder(!!complaintUid);
   const TOTAL_STEPS = STEP_ORDER.length;
   const stepKey = STEP_ORDER[step - 1] ?? STEP_ORDER[0];
   const handleNext = () => setStep(s => Math.min(TOTAL_STEPS, s + 1));
   const handlePrev = () => setStep(s => Math.max(1, s - 1));
 
-  /**
-   * Houve apreensão nesta fiscalização.
-   *
-   * Na tela iterativa é **derivado**: o agente liga o interruptor de um produto
-   * e isso é a declaração — perguntar a seguir se houve apreensão seria pedir-
-   * lhe que confirmasse o que acabou de fazer. Derivar em vez de escrever
-   * também evita o estado dessincronizado de ficar «activa» depois de o último
-   * item ser apagado, com a validação a correr sobre um auto que já não existe.
-   *
-   * No formulário por passos continua a ser o interruptor: lá não há produto
-   * onde a declaração se possa pendurar.
-   */
-  const apreensaoActiva =
-    modalidade === 'iterativa'
-      ? apreensaoItens.some((item) => !itemVazio(item))
-      : apreensaoDeclarada;
+  /** Houve apreensão nesta fiscalização: na tela iterativa é derivado dos itens. */
+  const apreensaoActiva = apreensaoItens.some((item) => !itemVazio(item));
 
   // Extraída de dentro do `disabled` do botão: passou a haver dois caminhos
   // para avançar — o botão do rodapé e a tecla de acção do teclado — e duas
@@ -644,7 +599,7 @@ export default function NovaVisita() {
   // passo da equipa — o momento em que já se sabe de quem é o espaço e quem lá
   // está — e é a partir daí que nada mais se perde.
   const garantirRascunho = async (): Promise<string | null> => {
-    if (modalidade !== 'iterativa' || visitaId) return visitaId;
+    if (visitaId) return visitaId;
     const id = generateId();
     await db.visitas.add({
       id,
@@ -757,15 +712,10 @@ export default function NovaVisita() {
     anexos,
     isSubmitting,
     aoRecuperar: (draft, provas) => {
-      // A modalidade é reposta antes do passo: a ordem dos passos depende dela,
-      // e um rascunho da tela iterativa restaurado contra a ordem do stepper
-      // caía sempre no primeiro passo.
-      const modalidadeLida = modalidadeDoRascunho(draft, canUseIterativeMode());
       const complaintUidLido = typeof draft.complaintUid === 'string' ? draft.complaintUid : '';
-      setModalidade(modalidadeLida);
       setComplaintUid(complaintUidLido);
-      setComplaintVerification(draft.complaintVerification??null);
-      setStep(passoDoRascunho(draft, inspectionStepOrder(modalidadeLida, !!complaintUidLido)));
+      setComplaintVerification(draft.complaintVerification ?? null);
+      setStep(passoDoRascunho(draft, inspectionStepOrder(!!complaintUidLido)));
 
       if (typeof draft.visitaId === 'string') setVisitaId(draft.visitaId);
       if (draft.firmaId) setFirmaId(draft.firmaId);
@@ -785,7 +735,6 @@ export default function NovaVisita() {
 
       // Apreensão, preços e cobertura: o que o rascunho não gravava, e por isso
       // desaparecia. Um auto levantado no terreno reabria vazio.
-      if (typeof draft.apreensaoActiva === 'boolean') setApreensaoDeclarada(draft.apreensaoActiva);
       if (typeof draft.apreensaoSemInfracao === 'boolean') {
         setApreensaoSemInfracao(draft.apreensaoSemInfracao);
       }
@@ -954,15 +903,13 @@ export default function NovaVisita() {
     // cobertura ser contada e de o push os apanhar. Ao sair da tela não serve:
     // o agente pode submeter sem lá voltar, e a limpeza tem de correr no único
     // ponto por onde tudo passa.
-    if (modalidade === 'iterativa') {
-      await purgarConstatacoesVazias(novaVisitaId, {
-        anexos,
-        infracoes,
-        apreensaoItens,
-        recomendacoes,
-        produtosPrices,
-      });
-    }
+    await purgarConstatacoesVazias(novaVisitaId, {
+      anexos,
+      infracoes,
+      apreensaoItens,
+      recomendacoes,
+      produtosPrices,
+    });
 
     const visita: Visita = {
       id: novaVisitaId,
@@ -1142,6 +1089,31 @@ export default function NovaVisita() {
     }
   };
 
+  const handleDiscard = async () => {
+    const confirmar = await confirmDialog({
+      title: 'Descartar esta fiscalização?',
+      message: 'Todos os dados preenchidos nesta fiscalização serão apagados deste dispositivo. Esta acção não pode ser desfeita.',
+      confirmLabel: 'Descartar',
+      cancelLabel: 'Continuar a editar',
+      tone: 'warning',
+      destructive: true,
+    });
+    if (!confirmar) return;
+
+    setIsSubmitting(true);
+    try {
+      await discardInspectionDraft(visitaId);
+      await clearDraft();
+      clearReturnAnchor();
+      navigate('/visitas', { replace: true });
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[drcae] Erro ao descartar fiscalização local:', err);
+      addAppLog('error', 'nova-visita', 'Falha ao descartar fiscalização local', err);
+      toast.error('Não foi possível descartar a fiscalização. Tente novamente.');
+    }
+  };
+
   // Só usado enquanto o catálogo não tiver sido sincronizado. A gravidade segue
   // a escala do grupo `gravity` (nível 1..3), a mesma do catálogo real.
   const FALLBACK_INFRACOES: InfractionCatalogItem[] = [
@@ -1257,10 +1229,10 @@ export default function NovaVisita() {
     atividadesDaFirma: firmas?.find((f) => f.id === firmaId)?.atividades ?? [],
     isSubmitting,
     motivosApreensao,
-    modalidade, visitaId, constatacaoActivaId, setConstatacaoActivaId,
+    visitaId, constatacaoActivaId, setConstatacaoActivaId,
     coberturaReconhecida, setCoberturaReconhecida,
     navigate, saveDraft, setSearch, visibleFirmsCount, setVisibleFirmsCount,
-    apreensaoActiva, setApreensaoActiva: setApreensaoDeclarada, apreensaoSemInfracao, setApreensaoSemInfracao,
+    apreensaoActiva, apreensaoSemInfracao, setApreensaoSemInfracao,
     apreensaoJustificacao, setApreensaoJustificacao, apreensaoItens, setApreensaoItens,
     trustee, setTrustee,
   }), [
@@ -1273,25 +1245,12 @@ export default function NovaVisita() {
     supplyProducts, supplyStatus, supplyCachedAt, produtosPrices,
     location, mapProvider, isSubmitting, visibleFirmsCount,
     apreensaoActiva, apreensaoSemInfracao, apreensaoJustificacao, apreensaoItens, trustee,
-    modalidade, visitaId, constatacaoActivaId, coberturaReconhecida,
+    visitaId, constatacaoActivaId, coberturaReconhecida,
     motivosApreensao,
   ]);
 
-  // A escolha de modalidade só aparece depois de resolvida a pergunta do
-  // rascunho: as duas ao mesmo tempo punham o agente a decidir a modalidade de
-  // uma fiscalização que talvez fosse recuperar — e a recuperação decide-a por
-  // ele, a partir do que estava gravado.
   if (!draftChecked) {
     return <div className="h-full bg-[#F5F7FA] dark:bg-slate-950" />;
-  }
-
-  if (!modalidade) {
-    return (
-      <ModalidadeSelector
-        onEscolher={setModalidade}
-        onVoltar={() => navigate(-1)}
-      />
-    );
   }
 
   return (
@@ -1342,11 +1301,6 @@ export default function NovaVisita() {
             }}
           />
         )}
-        {stepKey === 'infracoes'    && <StepInfracoes />}
-        {stepKey === 'apreensao'    && <StepApreensao />}
-        {stepKey === 'provas'       && <StepProvas />}
-        {stepKey === 'cestaBasica'  && <StepCestaBasica />}
-        {stepKey === 'recomendacoes'&& <StepRecomendacoes />}
         {stepKey === 'revisao'      && <StepRevisao complaint={complaint} verification={complaintVerification} />}
       </div>
 
@@ -1369,13 +1323,24 @@ export default function NovaVisita() {
                Próximo Passo
             </button>
          ) : (
-            <button
-               onClick={handleSubmit}
-               disabled={isSubmitting || coberturaPorReconhecer}
-               className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 dark:bg-slate-950 hover:bg-slate-800 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-slate-900/20 dark:shadow-none"
-            >
-               {isSubmitting ? 'A guardar...' : 'Finalizar Registo'}
-            </button>
+            <>
+              <button
+                 type="button"
+                 onClick={() => void handleDiscard()}
+                 disabled={isSubmitting}
+                 className="px-4 py-3.5 rounded-xl text-sm font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 hover:bg-red-100 dark:hover:bg-red-950/50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                 <Trash2 className="w-4 h-4" />
+                 Descartar
+              </button>
+              <button
+                 onClick={handleSubmit}
+                 disabled={isSubmitting || coberturaPorReconhecer}
+                 className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-slate-900 dark:bg-slate-950 hover:bg-slate-800 dark:hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-slate-900/20 dark:shadow-none"
+              >
+                 {isSubmitting ? 'A guardar...' : 'Finalizar Registo'}
+              </button>
+            </>
          )}
       </div>
 

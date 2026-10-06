@@ -38,3 +38,19 @@ export function abreviaturaDocumento(tipo: TipoDocumento): string {
 export function nomeDocumento(tipo: TipoDocumento): string {
   return tipo.name?.trim() || abreviaturaDocumento(tipo);
 }
+
+export interface DocumentoKeyboardConfig {
+  inputMode: 'numeric' | 'text';
+  pattern?: string;
+  autoCapitalize: 'off' | 'characters';
+}
+
+/** Teclado recomendado para o número do documento seleccionado. */
+export function tecladoNumeroDocumento(docType: string): DocumentoKeyboardConfig {
+  const code = docType.trim().toLowerCase();
+  if (code === 'bi' || code === 'nif') {
+    return { inputMode: 'numeric', pattern: '[0-9]*', autoCapitalize: 'off' };
+  }
+
+  return { inputMode: 'text', autoCapitalize: 'characters' };
+}

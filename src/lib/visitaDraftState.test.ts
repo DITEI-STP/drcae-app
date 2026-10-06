@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   DRAFT_VERSION,
   describeDraft,
-  modalidadeDoRascunho,
   parseDraft,
   passoDoRascunho,
   serializeDraft,
@@ -94,27 +93,20 @@ describe('serializeDraft / parseDraft', () => {
   });
 });
 
-describe('modalidadeDoRascunho', () => {
-  it('respeita a modalidade gravada quando o agente está no piloto', () => {
-    expect(modalidadeDoRascunho({ modalidade: 'iterativa' }, true)).toBe('iterativa');
-  });
-
-  it('cai no stepper quando o grant do piloto já não existe', () => {
-    expect(modalidadeDoRascunho({ modalidade: 'iterativa' }, false)).toBe('stepper');
-  });
-
-  it('cai no stepper sem modalidade gravada', () => {
-    expect(modalidadeDoRascunho({}, true)).toBe('stepper');
-  });
-});
-
 describe('passoDoRascunho', () => {
   it('reabre no passo gravado', () => {
     expect(passoDoRascunho({ stepKey: 'tela' }, ORDEM_ITERATIVA)).toBe(3);
   });
 
+  it.each(['infracoes', 'apreensao', 'provas', 'cestaBasica', 'recomendacoes'])(
+    'retoma o antigo passo %s na tela iterativa',
+    (stepKey) => {
+      expect(passoDoRascunho({ stepKey }, ORDEM_ITERATIVA)).toBe(3);
+    },
+  );
+
   it('reabre no primeiro passo quando a chave já não existe na ordem', () => {
-    expect(passoDoRascunho({ stepKey: 'cestaBasica' }, ORDEM_ITERATIVA)).toBe(1);
+    expect(passoDoRascunho({ stepKey: 'removido' }, ORDEM_ITERATIVA)).toBe(1);
     expect(passoDoRascunho({}, ORDEM_ITERATIVA)).toBe(1);
   });
 });
