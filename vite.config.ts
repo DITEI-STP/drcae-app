@@ -34,6 +34,7 @@ export default defineConfig(({ mode }) => {
         base: '/app/',
         injectManifest: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+          globIgnores: ['**/map-config.js'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         manifest: {

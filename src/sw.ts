@@ -3,7 +3,7 @@
 import { clientsClaim } from 'workbox-core';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -15,6 +15,15 @@ self.skipWaiting();
 clientsClaim();
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
+
+registerRoute(
+  ({ url }) => url.origin === self.location.origin && url.pathname.endsWith('/map-config.js'),
+  new NetworkFirst({
+    cacheName: 'drcae-map-config-v1',
+    networkTimeoutSeconds: 3,
+    plugins: [new CacheableResponsePlugin({ statuses: [200] })],
+  }),
+);
 
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/storage/'),

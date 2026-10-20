@@ -21,4 +21,5 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=builder /opt/app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/40-map-config.sh /docker-entrypoint.d/40-map-config.sh
 EXPOSE 80
