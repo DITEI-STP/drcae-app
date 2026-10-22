@@ -383,6 +383,10 @@ export async function pushDeviceLogs(logs: AppLogEntry[]): Promise<{ accepted: s
 }
 
 // 7. Obter tabelas de referência
+export async function lookupOperatorsByNif(nif: string): Promise<{ firmas: import('../db/db').Firma[] }> {
+  return request(`operators/by-nif/${encodeURIComponent(nif)}`, {}, true);
+}
+
 export async function getAssets(): Promise<any> {
   return request('assets');
 }

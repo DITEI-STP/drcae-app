@@ -35,7 +35,7 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
     const runPending = () => {
       const state = getSyncSnapshot();
       const isSyncing = state.phase === 'pushing' || state.phase === 'pulling';
-      if (!enabled || !navigator.onLine || isSyncing) return;
+      if (!enabled || isSyncing) return;
       if (localStorage.getItem(PENDING_SYNC_KEY) !== '1') return;
       Promise.resolve(syncRef.current())
         .then(() => localStorage.removeItem(PENDING_SYNC_KEY))
@@ -109,7 +109,7 @@ export function useAppRealtime({ enabled, officerUid, onSyncRequested }: UseAppR
       debounceRef.current = window.setTimeout(() => {
         const state = getSyncSnapshot();
         const isSyncing = state.phase === 'pushing' || state.phase === 'pulling';
-        if (!navigator.onLine || isSyncing) return;
+        if (isSyncing) return;
         Promise.resolve(syncRef.current())
           .then(() => localStorage.removeItem(PENDING_SYNC_KEY))
           .catch(() => localStorage.setItem(PENDING_SYNC_KEY, '1'));

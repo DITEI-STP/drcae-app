@@ -7,7 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { triggerFullSync } from '../lib/sync';
 import { useAppRealtime } from '../lib/realtime';
-import { checkServerReachable } from '../lib/serverReachability';
+import { useServerReachability } from '../hooks/useServerReachability';
 import PwaBanners from './PwaBanners';
 import { useTheme } from '../hooks/useTheme';
 import { useBackIntent } from '../hooks/useBackIntent';
@@ -63,7 +63,7 @@ function getInitials(name: string): string {
 }
 
 export default function Layout({ onLogout }: LayoutProps) {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useServerReachability();
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncErrorMsg, setSyncErrorMsg] = useState<string | null>(null);
   const [syncNeedsAuth, setSyncNeedsAuth] = useState(false);
@@ -185,51 +185,6 @@ export default function Layout({ onLogout }: LayoutProps) {
     officerUid: officerInfo?.uid ?? null,
     onSyncRequested: syncData,
   });
-
-  const checkConnectivity = useCallback(async () => {
-    return checkServerReachable();
-  }, []);
-
-  // Monitorização de conectividade ativa com polling inteligente
-  useEffect(() => {
-    let active = true;
-    let timerId: any = null;
-
-    const poll = async () => {
-      const reachable = await checkConnectivity();
-      if (!active) return;
-      
-      setIsOnline(reachable);
-
-      // 10s se offline, 30s se online
-      const interval = reachable ? 30000 : 10000;
-      timerId = setTimeout(poll, interval);
-    };
-
-    poll();
-
-    const handleOnline = async () => {
-      if (!active) return;
-      const reachable = await checkConnectivity();
-      if (!active) return;
-      setIsOnline(reachable);
-    };
-
-    const handleOffline = () => {
-      if (!active) return;
-      setIsOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      active = false;
-      if (timerId) clearTimeout(timerId);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [checkConnectivity]);
 
   // ── Sync ao ficar online ──────────────────────────────────────────────
   // Dispara apenas quando a transição online→offline→online ocorre.

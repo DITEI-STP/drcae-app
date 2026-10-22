@@ -78,7 +78,7 @@ describe('syncRepresentantes', () => {
     await syncRepresentantes([
       { id: 'r1', firmaId: FIRMA, name: 'Ana', docType: 'bi', docNumber: '1', synced: true },
       { id: 'r2', firmaId: FIRMA, name: 'Bruno', docType: 'nif', docNumber: '2', synced: true },
-    ]);
+    ], 'complete');
     expect(await readRepresentantesDaFirma(FIRMA)).toHaveLength(2);
   });
 

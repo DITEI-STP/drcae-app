@@ -1,4 +1,5 @@
 import React from 'react';
+import { useServerReachability } from '../hooks/useServerReachability';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { 
@@ -95,19 +96,8 @@ const getMemberAvatar = (name: string) => {
 };
 
 export default function Dashboard() {
-  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const isOnline = useServerReachability();
   const [equipe, setEquipe] = React.useState<Tecnico[]>([]);
-
-  React.useEffect(() => {
-    const up = () => setIsOnline(true);
-    const down = () => setIsOnline(false);
-    window.addEventListener('online', up);
-    window.addEventListener('offline', down);
-    return () => {
-      window.removeEventListener('online', up);
-      window.removeEventListener('offline', down);
-    };
-  }, []);
 
   React.useEffect(() => {
     const saved = localStorage.getItem('drcae_equipe');

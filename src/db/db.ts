@@ -1,3 +1,5 @@
+import { notifyWrite } from './writeNotifications';
+export { onDatabaseWrite } from './writeNotifications';
 import Dexie, { type Table } from 'dexie';
 import { encryptRecord, decryptRecord, getActiveKey, type AppCryptoKey } from '../lib/crypto';
 import { rekeyEncryptedTables, type RekeyTarget } from './rekey';
@@ -575,28 +577,6 @@ class EncryptedWhereClause {
   anyOf(values: any[]) {
     return new EncryptedCollection(this.whereClause.anyOf(values), this.decryptFn);
   }
-}
-
-// Notificado após qualquer escrita, para invalidar caches derivadas destas
-// tabelas (ver lib/operadoresCache). Registado aqui, num único ponto, em vez de
-// em cada local de escrita — assim nenhuma escrita futura pode esquecer-se de o
-// fazer.
-type WriteListener = () => void;
-const writeListeners = new Set<WriteListener>();
-
-export function onDatabaseWrite(listener: WriteListener): () => void {
-  writeListeners.add(listener);
-  return () => writeListeners.delete(listener);
-}
-
-function notifyWrite() {
-  writeListeners.forEach((listener) => {
-    try {
-      listener();
-    } catch {
-      // Um consumidor a falhar não pode impedir os restantes nem a escrita.
-    }
-  });
 }
 
 class EncryptedTable {

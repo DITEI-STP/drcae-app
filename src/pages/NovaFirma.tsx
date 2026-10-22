@@ -1,7 +1,10 @@
+import NifCollisionSheet from '../components/NifCollisionSheet';
+import { useNifCollision } from '../hooks/useNifCollision';
+import { registerFirma } from '../lib/registerFirma';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Plus, Trash2, Check, ChevronRight, AlertTriangle, Users, Loader2 } from 'lucide-react';
-import { db, generateId, AtividadeEconomica } from '../db/db';
+import { generateId, AtividadeEconomica } from '../db/db';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { confirmDialog, toast } from '../lib/notifications';
@@ -119,6 +122,7 @@ export default function NovaFirma() {
   );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const nifCollision = useNifCollision();
   const [needsUnlock, setNeedsUnlock] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -306,7 +310,7 @@ export default function NovaFirma() {
     }
 
     setIsSubmitting(true);
-    const newFirmaId = generateId();
+    let newFirmaId = generateId();
 
     // Resolução dos `asset.id` num só ponto, à saída do formulário. A UI
     // trabalha com nomes — é o que se lê e o que continua gravado — mas o que
@@ -324,7 +328,8 @@ export default function NovaFirma() {
     }));
 
     try {
-      await db.firmas.add({
+      const registeredId = await registerFirma({
+
         id: newFirmaId,
         logo: logo || undefined,
         nif,
@@ -349,7 +354,9 @@ export default function NovaFirma() {
         atividades: atividadesComAsset,
         synced: false,
         createdAt: Date.now()
-      });
+      }, nifCollision.choose);
+      if (!registeredId) { setIsSubmitting(false); return; }
+      newFirmaId = registeredId;
     } catch (err) {
       setIsSubmitting(false);
       addAppLog('error', 'nova-firma', 'Falha ao registar operador', err);
@@ -703,6 +710,7 @@ export default function NovaFirma() {
          </button>
       </div>
 
+      {nifCollision.matches ? <NifCollisionSheet matches={nifCollision.matches} onChoose={nifCollision.resolve} /> : null}
       {needsUnlock && (
         <UnlockDialog
           reason="A base local ficou bloqueada. Introduza a palavra-passe para concluir o registo — os dados preenchidos mantêm-se."

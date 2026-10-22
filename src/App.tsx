@@ -29,6 +29,7 @@ import * as crypto from './lib/crypto';
 import { refreshReferenceAssets, triggerFullSync } from './lib/sync';
 import { clearSyncedServerCache, hasClearableSyncCache } from './lib/syncCache';
 import { checkServerReachable, isServerReachable } from './lib/serverReachability';
+import { useServerReachability } from './hooks/useServerReachability';
 import { useSyncState } from './lib/syncState';
 export { useSyncState };
 import NotificationContainer from './components/NotificationContainer';
@@ -1112,6 +1113,7 @@ async function countUnsyncedRecords(): Promise<number> {
 }
 
 function LoginPage({ onLogin }: { onLogin: () => void }) {
+  const isOnline = useServerReachability();
   const [nif, setNif] = useState(() => localStorage.getItem('drcae_officer_nif') || '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -1423,7 +1425,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
         <>
         <h1 className="text-2xl font-black text-center text-slate-900 mb-2">Entrar</h1>
         <p className="text-sm text-center text-slate-500 mb-6 font-medium">
-          {isServerReachable() ? 'Conectado ao Servidor' : 'Modo Offline - Acesso Criptografado'}
+          {isOnline ? 'Conectado ao Servidor' : 'Modo Offline - Acesso Criptografado'}
         </p>
 
         {error && (
