@@ -1,4 +1,6 @@
+import { pullInspectionChildren } from './operator-sync/pullInspectionChildren';
 import { syncPush } from './syncPush';
+import { repairInspectionTeams } from './inspection-team/repair';
 export { syncPush } from './syncPush';
 import { db } from '../db/db';
 import * as api from './api';
@@ -18,7 +20,8 @@ import { syncUtilizadoresCatalog } from './utilizadoresCatalog';
 import { toast } from './notifications';
 import { syncRepresentantes } from './representantesCache';
 import {syncReleasedComplaints} from './syncReleasedComplaints';
-import { applyServerDeletions } from './syncDeletions';
+import { applyQueuedFirmDeletions } from './operator-sync/queuedFirmDeletions';
+import { pullFirmAndVisitRecords } from './operator-sync/pullRecords';
 import {
   invalidateOfflineCredentials,
   listOfflineCredentialVersions,
@@ -83,77 +86,8 @@ export async function syncPull(profile?: string): Promise<number> {
   // ignorada em vez de apagar os menus (ver `mergeGrants`).
   setStoredGrants(response.grants, response.grants_state);
 
-  // Actualizar Firmas
-  if (response.firmas && response.firmas.length > 0) {
-    await db.firmas.bulkPut(response.firmas);
-    count += response.firmas.length;
-  }
-
-  // Actualizar Visitas — merge inteligente: dados do servidor têm precedência,
-  // mas campos locais que o servidor não devolve (ou devolve como null/vazio) são preservados.
-  // Isto evita a perda de recomendações, produtos, notas e outros campos offline-first.
-  if (response.visitas && response.visitas.length > 0) {
-    const enriched = await Promise.all(
-      response.visitas.map(async (v: any) => {
-        const existing = await db.visitas.get(v.id);
-        return {
-          // 1. Base: dados locais completos (garantia de não apagar nada)
-          ...(existing ?? {}),
-          // 2. Override: dados do servidor têm precedência sobre locais
-          ...v,
-          // 3. Preservar campos locais quando o servidor os devolve vazios/ausentes
-          recomendacoes: (v.recomendacoes && v.recomendacoes.length > 0)
-            ? v.recomendacoes
-            : (existing?.recomendacoes ?? []),
-          recomendacoesHistoricas: (v.recomendacoesHistoricas && v.recomendacoesHistoricas.length > 0)
-            ? v.recomendacoesHistoricas
-            : (existing?.recomendacoesHistoricas ?? []),
-          produtos: (v.produtos && v.produtos.length > 0)
-            ? v.produtos
-            : (existing?.produtos ?? []),
-          notes: v.notes || existing?.notes,
-          atividadeEconomica: v.atividadeEconomica ?? existing?.atividadeEconomica,
-          offlineCode: v.offlineCode ?? existing?.offlineCode,
-          officialCode: v.officialCode ?? existing?.officialCode,
-          locationAutoCaptured: v.locationAutoCaptured ?? existing?.locationAutoCaptured,
-          // 4. Metadados de sync sempre actualizados
-          synced: true,
-          confirmationStatus: existing?.confirmationStatus ?? 'confirmada',
-        };
-      })
-    );
-    await db.visitas.bulkPut(enriched);
-    count += enriched.length;
-  }
-
-  // Actualizar Infracções
-  if (response.infracoes && response.infracoes.length > 0) {
-    await db.infracoes.bulkPut(response.infracoes);
-    count += response.infracoes.length;
-  }
-
-  // Actualizar Anexos (ficheiros capturados em campo por qualquer dispositivo)
-  // Só guarda registos que ainda não existem localmente (não sobrepõe capturas locais)
-  if (response.anexos && response.anexos.length > 0) {
-    for (const a of response.anexos as import('../db/db').Anexo[]) {
-      if (!a.id) continue;
-      const existing = await db.anexos.get(a.id);
-      if (!existing) {
-        await db.anexos.put({ ...a, synced: true });
-        count++;
-      } else {
-        // Enriquecer o registo local com o que o servidor tem e falta cá: a URL
-        // do ficheiro e a do fotograma. Sem a segunda, um dispositivo que
-        // recebeu a fiscalização de outro voltaria a descodificar o vídeo.
-        const enriquecer: Partial<import('../db/db').Anexo> = {};
-        if (!existing.url && a.url) enriquecer.url = a.url;
-        if (!existing.posterUrl && a.posterUrl) enriquecer.posterUrl = a.posterUrl;
-        if (Object.keys(enriquecer).length > 0) {
-          await db.anexos.update(a.id, { ...enriquecer, synced: true });
-        }
-      }
-    }
-  }
+  count += await pullFirmAndVisitRecords(response);
+  count += await pullInspectionChildren(response);
 
   // Guardar livros de cálculo (supplies) em cache local por operador, no
   // mesmo formato que o leitor espera (`{ bookStatus, products }`). Gravar o
@@ -170,20 +104,6 @@ export async function syncPull(profile?: string): Promise<number> {
       });
     }
     count += response.supplies.length;
-  }
-
-  // Apreensões e respectivos itens. Autos com obrigação em aberto chegam
-  // sempre, independentemente da janela do perfil — é o que permite ao agente
-  // fazer a recolha de um depósito antigo, no terreno e sem rede.
-  if (Array.isArray(response.apreensoes) && response.apreensoes.length > 0) {
-    for (const ap of response.apreensoes as any[]) {
-      const { itens, ...auto } = ap;
-      await db.apreensoes.put({ ...auto, synced: true });
-      for (const it of itens ?? []) {
-        await db.apreensaoItens.put({ ...it, apreensaoId: auto.id, synced: true });
-      }
-    }
-    count += response.apreensoes.length;
   }
 
   // Catálogos de agentes e representantes conhecidos. O servidor qualifica
@@ -217,11 +137,13 @@ export async function syncPull(profile?: string): Promise<number> {
   // descobriria que um registo que já tem localmente passou a status = -1.
   // A limpeza também remove filhos locais de uma fiscalização/apreensão
   // eliminada para não deixar contagens e detalhes órfãos no IndexedDB.
-  const deletedCount = await applyServerDeletions(db, response.deleted);
+  const deletedCount = await applyQueuedFirmDeletions(response.deleted);
   if (deletedCount > 0) {
     count += deletedCount;
     addAppLog('info', 'sync', `${deletedCount} eliminação(ões) do servidor aplicada(s) localmente`);
   }
+
+  await repairInspectionTeams(response.inspection_team_repairs);
 
   // Gravar novo timestamp de sync no metadata apenas depois dos tombstones.
   // Se a limpeza falhar, o cursor não avança e a eliminação volta no pull
